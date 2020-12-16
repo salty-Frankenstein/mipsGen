@@ -1,6 +1,6 @@
 import Control.Monad.Writer
 
-debug = True
+debug = False
 
 stAddr = if debug then 0x10010000 else 0
 
@@ -60,6 +60,7 @@ compile :: Env -> Stmt -> (String, Env)
 compile env (MACRO s) = (s, env)
 {- it changes the compiler state, with no result -}
 compile env (Define v) = ("", newVariable env v)
+
 {- assign register with imm -}
 compile env (Assign (Reg s) e@(Val _)) =
   ("addi " ++ s ++ ", $zero, " ++ eval env e ++ "\n", env)
@@ -69,17 +70,25 @@ compile env (Assign (Var v) (Reg r)) =
     Nothing -> error "Undefined variables"
     {- store into memory -}
     Just x -> ("sw $" ++ r ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n", env)
+{- assign variables with imm -}
+compile env (Assign v@(Var _) e@(Val _)) = 
+  let (toReg, _) = compile env (Reg evalTmpReg ?= e)
+      (toVar, _) = compile env (v ?= Reg evalTmpReg)
+    in (toReg ++ toVar, env)
+
 compile env (Inc (Reg s)) = ("addi " ++ s ++ ", " ++ s ++ ", 1" ++ "\n", env)
-compile env (Inc (Val v)) =
-  let load = eval env (Val v)
+compile env (Inc (Var v)) =
+  let load = eval env (Var v)
       (incTmp, _) = compile env (Inc (Reg evalTmpReg))
-   in (load ++ incTmp, env)
+      (store, _) = compile env (Var v ?= Reg evalTmpReg)
+   in (load ++ incTmp ++ store, env)
 compile env (Block []) = ("", env)
 compile env (Block (x : xs)) =
   let (s, env') = compile env x -- compile the first stmt and yield a new env
    in let (ss, envs) = compile env' (Block xs)
        in (s ++ ss, env) -- it returns the original env for scoping(??)
-      {- errors -}
+
+{- errors -}
 compile _ (Assign _ _) = error "cannot assign to a right value"
 compile _ (Inc _) = error "cannot assign to a right value"
 
@@ -107,13 +116,16 @@ main = do
       compile env0 $
         Block
           [ Reg "t0" ?= Val 1,
+            Inc $ Reg "t0",
             Define $ Var "a",
+            Inc $ Var "a",
             Var "a" ?= Reg "t0",
             Define $ Var "b",
+            Var "b" ?= Val 10,
             Block
               [ --Var "x" ?= Reg "t0",  -- error: undefined
                 Define $ Var "x",
                 Var "x" ?= Reg "t0"
               ]
-            --Var "x" ?= Reg "t0" -- error: out of scope
+              --Var "x" ?= Reg "t0" -- error: out of scope
           ]
