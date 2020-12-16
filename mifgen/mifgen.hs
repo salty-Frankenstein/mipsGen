@@ -15,7 +15,6 @@ writeMif f c = do
   let mifData = concat $ zipWith toLine (map toIndex [0 ..]) c
   let content = "CONTENT\nBEGIN\n" ++ mifData ++ "END;\n"
   writeFile f (width ++ depth ++ ar ++ dr ++ content)
-  return ()
   where
     toLine a b = a ++ " : " ++ b ++ "\n"
 
