@@ -1,3 +1,5 @@
+module MipsGen.MipsGen where
+
 import Control.Monad.State
 import Control.Monad.Writer
 
@@ -13,7 +15,7 @@ cmpReg1 = "t1"
 
 cmpReg2 = "t2"
 
-initCode = "addi $" ++ baseReg ++ ", $zero, " ++ show stAddr ++ "\n"
+initCode = "\taddi $" ++ baseReg ++ ", $zero, " ++ show stAddr ++ "\n"
 
 data Expr
   = Val Int
@@ -92,12 +94,13 @@ eval env (Var v) =
   case lookup v (symList env) of
     Nothing -> error "Undefined variables"
     -- load variable to tmpreg 0
-    Just x -> "lw $" ++ evalTmpReg ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n"
+    Just x -> "\tlw $" ++ evalTmpReg ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n"
 eval _ (Lt (Reg a) (Reg b)) =
-  "slt $" ++ evalTmpReg ++ ", " ++ "$" ++ a ++ ", $" ++ b ++ "\n"
+  "\tslt $" ++ evalTmpReg ++ ", " ++ "$" ++ a ++ ", $" ++ b ++ "\n"
 eval _ (Lt (Reg a) (Val n)) =
-  "slti $" ++ evalTmpReg ++ ", " ++ "$" ++ a ++ ", " ++ show n ++ "\n"
--- eval _ (Lt (Var v))
+  "\tslti $" ++ evalTmpReg ++ ", " ++ "$" ++ a ++ ", " ++ show n ++ "\n"
+eval env (Lt v@(Var _) a@(Reg _)) =
+  eval env v ++ eval env (Reg evalTmpReg ?<= a) 
 
 eval _ _ = error "Unknown pattern"
 
@@ -110,7 +113,7 @@ compile (Define v) = newVariable v
 compile (Assign (Reg s) e@(Val _)) =
   do
     env <- getEnv
-    appendCode $ "addi " ++ s ++ ", $zero, " ++ eval env e ++ "\n"
+    appendCode $ "\taddi " ++ s ++ ", $zero, " ++ eval env e ++ "\n"
 {- assign variables with regs -}
 compile (Assign (Var v) (Reg r)) =
   do
@@ -118,14 +121,14 @@ compile (Assign (Var v) (Reg r)) =
     case lookup v (symList env) of
       Nothing -> error "Undefined variables"
       {- store into memory -}
-      Just x -> appendCode $ "sw $" ++ r ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n"
+      Just x -> appendCode $ "\tsw $" ++ r ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n"
 {- assign variables with imm -}
 compile (Assign v@(Var _) e@(Val _)) =
   do
     compile (Reg evalTmpReg ?= e)
     compile (v ?= Reg evalTmpReg)
 compile (Inc (Reg s)) =
-  appendCode $ "addi " ++ s ++ ", " ++ s ++ ", 1" ++ "\n"
+  appendCode $ "\taddi " ++ s ++ ", " ++ s ++ ", 1" ++ "\n"
 compile (Inc (Var v)) =
   do
     env <- getEnv
@@ -133,15 +136,22 @@ compile (Inc (Var v)) =
     compile (Inc (Reg evalTmpReg))
     compile (Var v ?= Reg evalTmpReg)
 
-{-
-compile env (IF (Val _) _ _) = error "syntax error in if-statement"
-compile env (IF e s1 s2) =
-  let cond = eval e
-      lID = show $ labelId env
-      falseL = "false_label" ++ lID ++ ":\n"
-      doneL = "done_label" ++ lID ++ ":\n"
-      (thenStmt, _) = compile ()
--}
+
+compile (IF (Val _) _ _) = error "syntax error in if-statement"
+compile (IF cond thenStmt elseStmt) =
+  do
+    env <- getEnv
+    appendCode $ eval env cond -- condition expr, result in $t0
+    let lID = show $ labelID env
+        falseL = "false_label" ++ lID
+        doneL = "done_label" ++ lID
+    appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ falseL ++ "\n" -- if !cond goto false_label
+    incLabel  -- update label
+    compile thenStmt
+    appendCode $ falseL ++ ":\n"  -- false label
+    compile elseStmt
+    appendCode $ doneL ++ ":\n" -- done label  
+
 
 -- compile env (For (Var v) st ed s) =
 --   let label = "loop" ++ show (labelId env)
@@ -157,7 +167,7 @@ compile (Block (x : xs)) =
     compile x
     compile (Block xs) -- complie the whole block with the environment changed
     putEnv oldEnv -- set the original env for scoping(??)
-compile NOP = appendCode "nop\n"
+compile NOP = appendCode "\tnop\n"
 {- errors -}
 compile (Assign _ _) = error "cannot assign to a right value"
 compile (Inc _) = error "cannot assign to a right value"
@@ -166,29 +176,4 @@ compile For {} = error "syntax error in for-statement"
 runCompile :: Stmt -> String
 runCompile s =
   let (_, c) = execState (compile s) compileSt0
-   in c
-
-main :: IO ()
-main = do
-  putStr (initCode ++ s)
-  --print $ symList env
-  return ()
-  where
-    s =
-      runCompile $
-        Block
-          [ Reg "t0" ?= Val 1,
-            Inc $ Reg "t0",
-            Define $ Var "a",
-            Inc $ Var "a",
-            Var "a" ?= Reg "t0",
-            Define $ Var "b",
-            Var "b" ?= Val 10,
-            Block
-              [ --Var "x" ?= Reg "t0",  -- error: undefined
-                Define $ Var "x",
-                Var "x" ?= Reg "t0"
-              ],
-            --Var "x" ?= Reg "t0" -- error: out of scope
-            Var "b" ?= Val 20
-          ]
+   in initCode ++ c

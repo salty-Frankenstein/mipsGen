@@ -2,8 +2,8 @@ addi $t0, $zero, 10
 addi $t1, $zero, 3		# one
 addi $t2, $zero, 1		# one
 slt $t0, $t1, $t2
-bnez $t0, done
-
+blez $t0, done
+nop
 addi $t9, $zero, 268500992 	# array base address
 addi $t1, $zero, 3		# one
 sw $t1, 0($t9)			# a[0] = 1
