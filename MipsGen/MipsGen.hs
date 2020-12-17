@@ -2,7 +2,7 @@ module MipsGen.MipsGen where
 
 import Control.Monad.State
 
-debug = False
+debug = True
 
 stAddr = if debug then 0x10010000 else 0
 
@@ -76,7 +76,7 @@ putEnv e' = state $ \(_, l, c) -> ((), (e', l, c))
 -- empty environment
 
 env0 :: Env
-env0 = Env [] stAddr
+env0 = Env [] 0
 
 compileSt0 :: CompileSt
 compileSt0 = (env0, 0, "")

@@ -1,4 +1,4 @@
-	addi $t9, $zero, 0
+	addi $t9, $zero, 268500992
 	lw $t0, 0($t9)
 	slt $t0, $t0, $t1
 	blez $t0 false_label0
