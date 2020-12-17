@@ -21,6 +21,7 @@ data Expr
   | Reg String
   | Var String
   | Lt Expr Expr -- less than
+  | Xor Expr Expr
 
 data Stmt
   = MACRO String
@@ -28,8 +29,7 @@ data Stmt
   | Assign Expr Expr
   | Inc Expr
   | IF Expr Stmt Stmt
-  | ForTime Int Stmt
-  | For Expr Int Int Stmt -- For (Var _) st ed Block
+  | For Expr Int Int Stmt -- For (Var _) st ed Block, the range is [st,ed)
   | Block [Stmt]
   | NOP
 
@@ -93,17 +93,25 @@ eval :: Env -> Expr -> String
 eval _ (Val n) = show n
 eval env (Var v) =
   case lookup v (symList env) of
-    Nothing -> error $ "Undefined variables: " ++ v
+    Nothing -> error $ "Undefined variable: " ++ v
     -- load variable to tmpreg 0
     Just x -> "\tlw $" ++ evalTmpReg ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n"
+
 eval _ (Lt (Reg a) (Reg b)) =
-  "\tslt $" ++ evalTmpReg ++ ", " ++ "$" ++ a ++ ", $" ++ b ++ "\n"
+  "\tslt $" ++ evalTmpReg ++ ", $" ++ a ++ ", $" ++ b ++ "\n"
 eval _ (Lt (Reg a) (Val n)) =
-  "\tslti $" ++ evalTmpReg ++ ", " ++ "$" ++ a ++ ", " ++ show n ++ "\n"
+  "\tslti $" ++ evalTmpReg ++ ", $" ++ a ++ ", " ++ show n ++ "\n"
 eval env (Lt v@(Var _) a@(Reg _)) =
   eval env v ++ eval env (Reg evalTmpReg ?< a) 
+eval env (Lt v@(Var _) n@(Val _)) =
+  eval env v ++ eval env (Reg evalTmpReg ?< n)
 
-eval _ _ = error "Unknown pattern"
+eval _ (Xor (Reg a) (Val n)) = 
+  "\txori $" ++ evalTmpReg ++ ", $" ++ a ++ ", " ++ show n ++ "\n"
+
+{- errors -}
+eval _ (Xor _ _) = error "Unknown expression pattern: xor"
+eval _ _ = error "Unknown expression pattern"
 
 -- yields the result and passing a new environment
 compile :: Stmt -> CompileM ()
@@ -114,7 +122,7 @@ compile (Define v) = newVariable v
 compile (Assign (Reg s) e@(Val _)) =
   do
     env <- getEnv
-    appendCode $ "\taddi " ++ s ++ ", $zero, " ++ eval env e ++ "\n"
+    appendCode $ "\taddi $" ++ s ++ ", $zero, " ++ eval env e ++ "\n"
 {- assign variables with regs -}
 compile (Assign (Var v) (Reg r)) =
   do
@@ -129,7 +137,7 @@ compile (Assign v@(Var _) e@(Val _)) =
     compile (Reg evalTmpReg ?= e)
     compile (v ?= Reg evalTmpReg)
 compile (Inc (Reg s)) =
-  appendCode $ "\taddi " ++ s ++ ", " ++ s ++ ", 1" ++ "\n"
+  appendCode $ "\taddi $" ++ s ++ ", $" ++ s ++ ", 1" ++ "\n"
 compile (Inc (Var v)) =
   do
     env <- getEnv
@@ -154,12 +162,19 @@ compile (IF cond thenStmt elseStmt) =
     appendCode $ doneL ++ ":\n" -- done label  
 
 
--- compile env (For (Var v) st ed s) =
---   let label = "loop" ++ show (labelId env)
---       code =
---         Block [
---           Define $ Var ("_" ++ label),
---         ]
+compile (For v@(Var _) st ed bodyStmt) =
+  if st > ed then error "Bad range in for statement"
+  else do
+    (env, curLabel, _) <- get 
+    let label = "loop" ++ show curLabel
+    incLabel  -- update label
+    compile $ v ?= Val st
+    appendCode $ label ++ ":\n"
+    compile bodyStmt
+    compile (Inc v)
+    appendCode $ eval env (v ?< Val ed)
+    appendCode $ eval env (Reg evalTmpReg `Xor` Val 1)  -- cond = not cond
+    appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ label ++ "\n" -- if cond goto loop
 
 compile (Block []) = return () -- do nothing
 compile (Block (x : xs)) =
