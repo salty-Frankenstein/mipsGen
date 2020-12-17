@@ -5,16 +5,16 @@ main = do
   writeFile "./out.asm" $ runCompile $ 
     mDO $ do 
       mDEF "a"
-      mIF (var "a" ?<= reg "t1") 
+      mIF (var "a" ?< reg "t1") 
         (mDO $ do
           mDEF "b"
-          mIF (var "b" ?<= reg "t2") nop nop
+          mIF (var "b" ?< reg "t2") nop nop
         ) 
         (mDO $ do
-          mIF (var "a" ?<= reg "t2") (mDO mNOP) (mDO mNOP)
+          mIF (var "a" ?< reg "t2") nop nop
         )
-      mIF (var "a" ?<= reg "t1") nop nop
-      mIF (var "a" ?<= reg "t1") nop nop
+      mIF (var "a" ?< reg "t1") nop nop
+      mIF (var "a" ?< reg "t1") nop nop
 
 -- Block
 --     [ Reg "t0" ?= Val 1,

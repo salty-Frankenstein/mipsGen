@@ -84,8 +84,8 @@ compileSt0 = (env0, 0, "")
 (?=) :: Expr -> Expr -> Stmt
 (?=) = Assign
 
-(?<=) :: Expr -> Expr -> Expr
-(?<=) = Lt
+(?<) :: Expr -> Expr -> Expr
+(?<) = Lt
 
 -- evaluate the expression in an environment
 -- the result should be loaded to $t0
