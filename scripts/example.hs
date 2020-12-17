@@ -1,23 +1,21 @@
-import MipsGen.MipsGen
+import MipsGen.Monadic
 
 main :: IO ()
 main = do
-  putStr $ runCompile $
-        Block
-          [ 
-            --Reg "t0" ?<= Reg "t1",
-            Define $ Var "a",
-            IF (Var "a" ?<= Reg "t1") (
-              Block [
-                Define $ Var "b",
-                IF (Var "b" ?<= Reg "t2") NOP NOP
-              ]
-            ) 
-            (
-              NOP
-            ) 
-            --Var "a" ?<= Reg "b"
-          ]
+  writeFile "./out.asm" $ runCompile $ 
+    mDO $ do 
+      mDEF "a"
+      mIF (var "a" ?<= reg "t1") 
+        (mDO $ do
+          mDEF "b"
+          mIF (var "b" ?<= reg "t2") nop nop
+        ) 
+        (mDO $ do
+          mNOP--mIF (var "a" ?<= reg "t2") (mDO mNOP) (mDO mNOP)
+        )
+      mIF (var "a" ?<= reg "t1") nop nop
+      mIF (var "a" ?<= reg "t1") nop nop
+
 -- Block
 --     [ Reg "t0" ?= Val 1,
 --     Inc $ Reg "t0",

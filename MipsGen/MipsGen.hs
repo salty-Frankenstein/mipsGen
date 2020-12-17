@@ -1,7 +1,6 @@
 module MipsGen.MipsGen where
 
 import Control.Monad.State
-import Control.Monad.Writer
 
 debug = False
 
@@ -92,7 +91,7 @@ eval :: Env -> Expr -> String
 eval _ (Val n) = show n
 eval env (Var v) =
   case lookup v (symList env) of
-    Nothing -> error "Undefined variables"
+    Nothing -> error $ "Undefined variables: " ++ v
     -- load variable to tmpreg 0
     Just x -> "\tlw $" ++ evalTmpReg ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n"
 eval _ (Lt (Reg a) (Reg b)) =
@@ -119,7 +118,7 @@ compile (Assign (Var v) (Reg r)) =
   do
     env <- getEnv
     case lookup v (symList env) of
-      Nothing -> error "Undefined variables"
+      Nothing -> error $ "Undefined variables: " ++ v
       {- store into memory -}
       Just x -> appendCode $ "\tsw $" ++ r ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n"
 {- assign variables with imm -}
