@@ -1,7 +1,7 @@
 {- for monadic syntax -}
 module MipsGen.Monadic (
     runCompile,
-    mDEF, mIF, mDO, (?=), mNOP, (?<=),
+    mDEF, mIF, mDO, (?=), mNOP, (?<),
     var, val, reg, nop
 ) where
 
