@@ -34,50 +34,52 @@ data Stmt
   | NOP
 
 type Addr = Int -- memory address
+type LabelID = Int  -- for generating loop labels
+type Code = String  -- the code generated
 
 {- the environment of compiling progress -}
 data Env = Env
-  { labelID :: Int, -- for generating loop labels
-    symList :: [(String, Addr)], -- symbol list
+  { symList :: [(String, Addr)], -- symbol list
     heapTop :: Addr -- heap top address, for allocating
   }
 
-type CompileSt = (Env, String) -- the code generated
+{- the compiler state -}
+type CompileSt = (Env, LabelID, Code) 
 
 {- the compiler monad -}
 {- the compiling environment should be passd by a state monad -}
 type CompileM = State CompileSt
 
 incLabel :: CompileM ()
-incLabel = state $ \(Env l s h, c) -> ((), (Env (l + 1) s h, c))
+incLabel = state $ \(e, l, c) -> ((), (e, l + 1, c))
 
 -- add a new variable to an environment
 newVariable :: Expr -> CompileM ()
 newVariable (Var v) = do
-  (Env l s h, c) <- get
+  (Env s h, l, c) <- get
   case lookup v s of
-    Nothing -> put (Env l ((v, h) : s) (h + 4), c)
+    Nothing -> put (Env ((v, h) : s) (h + 4), l, c)
     Just _ -> error $ "redefinition of symbol: " ++ v
 newVariable _ = error "wrong type"
 
 appendCode :: String -> CompileM ()
-appendCode c' = state $ \(Env l s h, c) -> ((), (Env l s h, c ++ c'))
+appendCode c' = state $ \(e, l, c) -> ((), (e, l, c ++ c'))
 
 getEnv :: CompileM Env
 getEnv = do
-  (e, c) <- get
+  (e, _, _) <- get
   return e
 
 putEnv :: Env -> CompileM ()
-putEnv e' = state $ \(_, c) -> ((), (e', c))
+putEnv e' = state $ \(_, l, c) -> ((), (e', l, c))
 
 -- empty environment
 
 env0 :: Env
-env0 = Env 0 [] stAddr
+env0 = Env [] stAddr
 
 compileSt0 :: CompileSt
-compileSt0 = (env0, "")
+compileSt0 = (env0, 0, "")
 
 (?=) :: Expr -> Expr -> Stmt
 (?=) = Assign
@@ -139,9 +141,9 @@ compile (Inc (Var v)) =
 compile (IF (Val _) _ _) = error "syntax error in if-statement"
 compile (IF cond thenStmt elseStmt) =
   do
-    env <- getEnv
+    (env, curLabel, _) <- get
     appendCode $ eval env cond -- condition expr, result in $t0
-    let lID = show $ labelID env
+    let lID = show curLabel
         falseL = "false_label" ++ lID
         doneL = "done_label" ++ lID
     appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ falseL ++ "\n" -- if !cond goto false_label
@@ -162,10 +164,11 @@ compile (IF cond thenStmt elseStmt) =
 compile (Block []) = return () -- do nothing
 compile (Block (x : xs)) =
   do
-    (oldEnv, _) <- get -- saving the old environment
+    (oldEnv, _, _) <- get -- saving the old environment
     compile x
     compile (Block xs) -- complie the whole block with the environment changed
     putEnv oldEnv -- set the original env for scoping(??)
+
 compile NOP = appendCode "\tnop\n"
 {- errors -}
 compile (Assign _ _) = error "cannot assign to a right value"
@@ -174,5 +177,5 @@ compile For {} = error "syntax error in for-statement"
 
 runCompile :: Stmt -> String
 runCompile s =
-  let (_, c) = execState (compile s) compileSt0
+  let (_, _, c) = execState (compile s) compileSt0
    in initCode ++ c

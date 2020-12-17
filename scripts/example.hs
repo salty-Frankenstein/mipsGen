@@ -11,7 +11,7 @@ main = do
           mIF (var "b" ?<= reg "t2") nop nop
         ) 
         (mDO $ do
-          mNOP--mIF (var "a" ?<= reg "t2") (mDO mNOP) (mDO mNOP)
+          mIF (var "a" ?<= reg "t2") (mDO mNOP) (mDO mNOP)
         )
       mIF (var "a" ?<= reg "t1") nop nop
       mIF (var "a" ?<= reg "t1") nop nop
