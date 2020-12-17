@@ -101,7 +101,7 @@ eval _ (Lt (Reg a) (Reg b)) =
 eval _ (Lt (Reg a) (Val n)) =
   "\tslti $" ++ evalTmpReg ++ ", " ++ "$" ++ a ++ ", " ++ show n ++ "\n"
 eval env (Lt v@(Var _) a@(Reg _)) =
-  eval env v ++ eval env (Reg evalTmpReg ?<= a) 
+  eval env v ++ eval env (Reg evalTmpReg ?< a) 
 
 eval _ _ = error "Unknown pattern"
 
