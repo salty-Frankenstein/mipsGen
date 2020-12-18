@@ -9,6 +9,7 @@ stAddr = if debug then 0x10010000 else 0
 baseReg = "t9" -- register for heap base address
 
 evalTmpReg = "t0"
+addrTmpReg = "t3"
 
 cmpReg1 = "t1"
 
@@ -143,6 +144,9 @@ eval env (Add v@Var{} (Val n)) =
   eval env v ++ eval env (Reg evalTmpReg ?+ Val n)
 eval env (Add v@Var{} r@(Reg _)) =
   eval env v ++ eval env (Reg evalTmpReg ?+ r)
+eval env (Add v1@Var{} v2@Var{}) =
+  let movV2ToC1 = "\taddu $" ++ cmpReg1 ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+    in eval env v2 ++ movV2ToC1 ++ eval env (v1 ?+ Reg cmpReg1)
 
 {- errors -}
 eval _ (Xor _ _) = error "Unknown expression pattern: xor"
@@ -185,7 +189,8 @@ compile (Assign (Var v idx) (Reg r)) =
           var@Var{} -> do
             appendCode $ eval env var 
             appendCode $ "\tsll $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 2\n"  -- TODO
-            appendCode $ eval env (Reg evalTmpReg ?+ Reg baseReg)
+            compile (Reg addrTmpReg ?= Reg evalTmpReg)
+            appendCode $ eval env (Reg addrTmpReg ?+ Reg baseReg)
             appendCode $ "\tsw $" ++ r ++ ", " ++ show addr ++ "($" ++ evalTmpReg ++ ")\n"
           _ -> error "TODO"
 
@@ -198,10 +203,11 @@ compile (Assign v@Var{} e@(Val _)) =
 {- otherwise: assign variables with expr -}
 compile (Assign v@Var{} e) =
   do
-    -- compile (Reg evalTmpReg ?= e)
     env <- getEnv
     appendCode $ eval env e
-    compile (v ?= Reg evalTmpReg)
+    -- use another temp reg since $t0 will be flushed while evaluating
+    compile (Reg cmpReg1 ?= Reg evalTmpReg) 
+    compile (v ?= Reg cmpReg1)
 
 compile (Inc (Reg s)) =
   appendCode $ "\taddi $" ++ s ++ ", $" ++ s ++ ", 1" ++ "\n"
