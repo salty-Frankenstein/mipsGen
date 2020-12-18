@@ -105,6 +105,9 @@ eval env (Lt v@(Var _) a@(Reg _)) =
   eval env v ++ eval env (Reg evalTmpReg ?< a) 
 eval env (Lt v@(Var _) n@(Val _)) =
   eval env v ++ eval env (Reg evalTmpReg ?< n)
+eval env (Lt v1@(Var _) v2@(Var _)) =
+  let movV2ToC1 = "\taddu $" ++ cmpReg1 ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+    in eval env v2 ++ movV2ToC1 ++ eval env (v1 ?< Reg cmpReg1)
 
 eval _ (Xor (Reg a) (Val n)) = 
   "\txori $" ++ evalTmpReg ++ ", $" ++ a ++ ", " ++ show n ++ "\n"
@@ -123,12 +126,23 @@ compile (Assign (Reg s) e@(Val _)) =
   do
     env <- getEnv
     appendCode $ "\taddi $" ++ s ++ ", $zero, " ++ eval env e ++ "\n"
+{- assign register with register -}
+compile (Assign (Reg r1) (Reg r2)) =
+  appendCode $ "\taddu $" ++ r1 ++ ", $zero, $" ++ r2 ++ "\n"
+
+{- assign register with variables -}
+compile (Assign r@(Reg rs) v@(Var vs)) =
+  do
+    env <- getEnv
+    appendCode $ eval env v
+    compile (r ?= Reg evalTmpReg)
+    
 {- assign variables with regs -}
 compile (Assign (Var v) (Reg r)) =
   do
     env <- getEnv
     case lookup v (symList env) of
-      Nothing -> error $ "Undefined variables: " ++ v
+      Nothing -> error $ "Undefined variable: " ++ v
       {- store into memory -}
       Just x -> appendCode $ "\tsw $" ++ r ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n"
 {- assign variables with imm -}
@@ -157,6 +171,7 @@ compile (IF cond thenStmt elseStmt) =
     appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ falseL ++ "\n" -- if !cond goto false_label
     incLabel  -- update label
     compile thenStmt
+    appendCode $ "\tj " ++ doneL ++ "\n\tnop\n"
     appendCode $ falseL ++ ":\n"  -- false label
     compile elseStmt
     appendCode $ doneL ++ ":\n" -- done label  

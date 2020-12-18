@@ -6,6 +6,8 @@
 	blez $t0 false_label0
 	addi $t0, $zero, 1
 	sw $t0, 4($t9)
+	j done_label0
+	nop
 false_label0:
 	addi $t0, $zero, 2
 	sw $t0, 4($t9)
