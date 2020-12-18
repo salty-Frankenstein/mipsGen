@@ -16,16 +16,20 @@ cmpReg2 = "t2"
 
 initCode = "\taddi $" ++ baseReg ++ ", $zero, " ++ show stAddr ++ "\n"
 
+-- data VarType = LVal | RVal  -- label of left or right value
+
 data Expr
   = Val Int
   | Reg String
-  | Var String
+  | Var String Expr -- a variable or an array with index
   | Lt Expr Expr -- less than
   | Xor Expr Expr
+  | Add Expr Expr
+
 
 data Stmt
   = MACRO String
-  | Define Expr -- define a variable
+  | Define String Size -- define a variable, or an Array, with a data size
   | Assign Expr Expr
   | Inc Expr
   | IF Expr Stmt Stmt
@@ -33,13 +37,15 @@ data Stmt
   | Block [Stmt]
   | NOP
 
+type Symbol = String
+type Size = Int
 type Addr = Int -- memory address
 type LabelID = Int  -- for generating loop labels
 type Code = String  -- the code generated
 
 {- the environment of compiling progress -}
 data Env = Env
-  { symList :: [(String, Addr)], -- symbol list
+  { symList :: [(Symbol, (Addr, Size))], -- symbol list
     heapTop :: Addr -- heap top address, for allocating
   }
 
@@ -47,20 +53,19 @@ data Env = Env
 type CompileSt = (Env, LabelID, Code) 
 
 {- the compiler monad -}
-{- the compiling environment should be passd by a state monad -}
+{- the compiling environment should be passed by a state monad -}
 type CompileM = State CompileSt
 
 incLabel :: CompileM ()
 incLabel = state $ \(e, l, c) -> ((), (e, l + 1, c))
 
 -- add a new variable to an environment
-newVariable :: Expr -> CompileM ()
-newVariable (Var v) = do
+newVariable :: Symbol -> Size -> CompileM ()
+newVariable v size = do
   (Env s h, l, c) <- get
   case lookup v s of
-    Nothing -> put (Env ((v, h) : s) (h + 4), l, c)
+    Nothing -> put (Env ((v, (h, size)) : s) (h + 4 * size), l, c)
     Just _ -> error $ "redefinition of symbol: " ++ v
-newVariable _ = error "wrong type"
 
 appendCode :: String -> CompileM ()
 appendCode c' = state $ \(e, l, c) -> ((), (e, l, c ++ c'))
@@ -87,30 +92,57 @@ compileSt0 = (env0, 0, "")
 (?<) :: Expr -> Expr -> Expr
 (?<) = Lt
 
+(?+) :: Expr -> Expr -> Expr
+(?+) = Add
+
 -- evaluate the expression in an environment
 -- the result should be loaded to $t0
 eval :: Env -> Expr -> String
 eval _ (Val n) = show n
-eval env (Var v) =
+eval env (Var v idx) =
   case lookup v (symList env) of
     Nothing -> error $ "Undefined variable: " ++ v
     -- load variable to tmpreg 0
-    Just x -> "\tlw $" ++ evalTmpReg ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n"
+    -- eval variable (or array) with index
+    Just (addr, size) -> 
+      case idx of
+        Val i ->
+          if i < size then
+            "\tlw $" ++ evalTmpReg ++ ", " ++ show (addr + 4*i) ++ "($" ++ baseReg ++ ")\n"
+          else error $ "Array index out of range: " ++ v  -- this case is for arrays
+        var@Var{} ->
+          let evalIdx = eval env var  -- eval index to tmp
+              mul4 = "\tsll $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 2\n"  -- TODO
+              addToBase = eval env (Reg evalTmpReg ?+ Reg baseReg) in -- tmp = tmp + base
+            evalIdx ++ mul4 ++ addToBase 
+            ++ "\tlw $" ++ evalTmpReg ++ ", " ++ show addr ++ "($" ++ evalTmpReg ++ ")\n"
+        _ -> error "TODO"
 
 eval _ (Lt (Reg a) (Reg b)) =
   "\tslt $" ++ evalTmpReg ++ ", $" ++ a ++ ", $" ++ b ++ "\n"
 eval _ (Lt (Reg a) (Val n)) =
   "\tslti $" ++ evalTmpReg ++ ", $" ++ a ++ ", " ++ show n ++ "\n"
-eval env (Lt v@(Var _) a@(Reg _)) =
+eval env (Lt v@Var{} a@(Reg _)) =
   eval env v ++ eval env (Reg evalTmpReg ?< a) 
-eval env (Lt v@(Var _) n@(Val _)) =
+eval env (Lt v@Var{} n@(Val _)) =
   eval env v ++ eval env (Reg evalTmpReg ?< n)
-eval env (Lt v1@(Var _) v2@(Var _)) =
+eval env (Lt v1@Var{} v2@Var{}) =
   let movV2ToC1 = "\taddu $" ++ cmpReg1 ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
     in eval env v2 ++ movV2ToC1 ++ eval env (v1 ?< Reg cmpReg1)
 
+{- xor-}
 eval _ (Xor (Reg a) (Val n)) = 
   "\txori $" ++ evalTmpReg ++ ", $" ++ a ++ ", " ++ show n ++ "\n"
+
+{- add -}
+eval _ (Add (Reg a) (Val n)) =
+  "\taddiu $" ++ evalTmpReg ++ ", $" ++ a ++ ", " ++ show n ++ "\n"
+eval _ (Add (Reg a) (Reg b)) =
+  "\taddu $" ++ evalTmpReg ++ ", $" ++ a ++ ", $" ++ b ++ "\n"
+eval env (Add v@Var{} (Val n)) =
+  eval env v ++ eval env (Reg evalTmpReg ?+ Val n)
+eval env (Add v@Var{} r@(Reg _)) =
+  eval env v ++ eval env (Reg evalTmpReg ?+ r)
 
 {- errors -}
 eval _ (Xor _ _) = error "Unknown expression pattern: xor"
@@ -120,7 +152,7 @@ eval _ _ = error "Unknown expression pattern"
 compile :: Stmt -> CompileM ()
 compile (MACRO s) = appendCode s
 {- it changes the compiler state, with no result -}
-compile (Define v) = newVariable v
+compile (Define v s) = newVariable v s
 {- assign register with imm -}
 compile (Assign (Reg s) e@(Val _)) =
   do
@@ -131,33 +163,54 @@ compile (Assign (Reg r1) (Reg r2)) =
   appendCode $ "\taddu $" ++ r1 ++ ", $zero, $" ++ r2 ++ "\n"
 
 {- assign register with variables -}
-compile (Assign r@(Reg rs) v@(Var vs)) =
+compile (Assign r@(Reg _) v@Var{}) =
   do
     env <- getEnv
     appendCode $ eval env v
     compile (r ?= Reg evalTmpReg)
     
 {- assign variables with regs -}
-compile (Assign (Var v) (Reg r)) =
+compile (Assign (Var v idx) (Reg r)) =
   do
     env <- getEnv
     case lookup v (symList env) of
       Nothing -> error $ "Undefined variable: " ++ v
       {- store into memory -}
-      Just x -> appendCode $ "\tsw $" ++ r ++ ", " ++ show x ++ "($" ++ baseReg ++ ")\n"
+      Just (addr, size) -> 
+        case idx of
+          Val i ->
+            if i < size then appendCode $ 
+              "\tsw $" ++ r ++ ", " ++ show (addr + 4*i) ++ "($" ++ baseReg ++ ")\n"
+            else error $ "Array index out of range: " ++ v  -- this case is for arrays
+          var@Var{} -> do
+            appendCode $ eval env var 
+            appendCode $ "\tsll $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 2\n"  -- TODO
+            appendCode $ eval env (Reg evalTmpReg ?+ Reg baseReg)
+            appendCode $ "\tsw $" ++ r ++ ", " ++ show addr ++ "($" ++ evalTmpReg ++ ")\n"
+          _ -> error "TODO"
+
 {- assign variables with imm -}
-compile (Assign v@(Var _) e@(Val _)) =
+compile (Assign v@Var{} e@(Val _)) =
   do
     compile (Reg evalTmpReg ?= e)
     compile (v ?= Reg evalTmpReg)
+
+{- otherwise: assign variables with expr -}
+compile (Assign v@Var{} e) =
+  do
+    -- compile (Reg evalTmpReg ?= e)
+    env <- getEnv
+    appendCode $ eval env e
+    compile (v ?= Reg evalTmpReg)
+
 compile (Inc (Reg s)) =
   appendCode $ "\taddi $" ++ s ++ ", $" ++ s ++ ", 1" ++ "\n"
-compile (Inc (Var v)) =
+compile (Inc v@Var{}) =
   do
     env <- getEnv
-    appendCode $ eval env (Var v)
+    appendCode $ eval env v
     compile (Inc (Reg evalTmpReg))
-    compile (Var v ?= Reg evalTmpReg)
+    compile (v ?= Reg evalTmpReg)
 
 
 compile (IF (Val _) _ _) = error "syntax error in if-statement"
@@ -177,7 +230,7 @@ compile (IF cond thenStmt elseStmt) =
     appendCode $ doneL ++ ":\n" -- done label  
 
 
-compile (For v@(Var _) st ed bodyStmt) =
+compile (For v@Var{} st ed bodyStmt) =
   if st > ed then error "Bad range in for statement"
   else do
     (env, curLabel, _) <- get 

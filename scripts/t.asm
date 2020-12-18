@@ -1,4 +1,13 @@
 addi $t0, $zero, 10
+sll $t0, $t0, 2
+
+addi $t1, $zero, 3
+mul $t0, $t1, $t0
+div $t0, $t1, $t0
+#div $t0, $t1
+mflo $t0
+
+
 addi $t1, $zero, 3		# one
 addi $t2, $zero, 1		# one
 slt $t0, $t1, $t2
