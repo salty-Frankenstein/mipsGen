@@ -4,7 +4,7 @@ import Control.Monad.State
 
 debug = True
 
-stAddr = if debug then 0x10010000 else 0
+stAddr = if debug then 0x10040000 else 0
 
 baseReg = "t9" -- register for heap base address
 
@@ -12,18 +12,16 @@ evalTmpReg = "t0"
 addrTmpReg = "t3"
 
 cmpReg1 = "t1"
-
 cmpReg2 = "t2"
-
+cmpReg3 = "t4"
 initCode = "\taddi $" ++ baseReg ++ ", $zero, " ++ show stAddr ++ "\n"
-
--- data VarType = LVal | RVal  -- label of left or right value
 
 data Expr
   = Val Int
   | Reg String
   | Var String Expr -- a variable or an array with index
   | Lt Expr Expr -- less than
+  | Equal Expr Expr
   | Xor Expr Expr
   | Add Expr Expr
 
@@ -93,6 +91,9 @@ compileSt0 = (env0, 0, "")
 (?<) :: Expr -> Expr -> Expr
 (?<) = Lt
 
+(?==) :: Expr -> Expr -> Expr
+(?==) = Equal
+
 (?+) :: Expr -> Expr -> Expr
 (?+) = Add
 
@@ -119,6 +120,7 @@ eval env (Var v idx) =
             ++ "\tlw $" ++ evalTmpReg ++ ", " ++ show addr ++ "($" ++ evalTmpReg ++ ")\n"
         _ -> error "TODO"
 
+{- less than -}
 eval _ (Lt (Reg a) (Reg b)) =
   "\tslt $" ++ evalTmpReg ++ ", $" ++ a ++ ", $" ++ b ++ "\n"
 eval _ (Lt (Reg a) (Val n)) =
@@ -130,6 +132,33 @@ eval env (Lt v@Var{} n@(Val _)) =
 eval env (Lt v1@Var{} v2@Var{}) =
   let movV2ToC1 = "\taddu $" ++ cmpReg1 ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
     in eval env v2 ++ movV2ToC1 ++ eval env (v1 ?< Reg cmpReg1)
+
+{- equal -}
+{- 
+        a == b
+    1.  cmp1 <- a < b
+    2.  cmp2 <- b < a
+    3.  cmp1 == 0 && cmp2 == 0 <=> a == b
+        <=> not cmp1 && not cmp2
+        <=> not (cmp1 || cmp2)
+        <=> nor cmp1 cmp2 <=> a == b
+    since nor is bitwise, only the low 1 bit should be kept, thus
+    4.  res <- (res << 31) >> 31
+-}
+eval env (Equal (Reg a) (Reg b)) =
+  let step1 = "\tslt $" ++ cmpReg1 ++ ", $" ++ a ++ ", $" ++ b ++ "\n"
+      step2 = "\tslt $" ++ cmpReg2 ++ ", $" ++ b ++ ", $" ++ a ++ "\n"
+      step3 = "\tnor $" ++ evalTmpReg ++ ", $" ++ cmpReg1 ++ ", $" ++ cmpReg2 ++ "\n"
+      step4 = "\tsll $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 31\n"
+            ++"\tsrl $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 31\n"
+    in step1 ++ step2 ++ step3 ++ step4
+eval env (Equal v@Var{} a@(Reg _)) =
+  eval env v ++ eval env (Reg evalTmpReg ?== a) 
+eval env (Equal v@Var{} n@(Val _)) =
+  eval env v ++ eval env (Reg evalTmpReg ?== n)
+eval env (Equal v1@Var{} v2@Var{}) =
+  let movV2ToC3 = "\taddu $" ++ cmpReg3 ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+    in eval env v2 ++ movV2ToC3 ++ eval env (v1 ?== Reg cmpReg3)
 
 {- xor-}
 eval _ (Xor (Reg a) (Val n)) = 
