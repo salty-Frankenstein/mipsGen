@@ -1,16 +1,16 @@
 	addi $t9, $zero, 268697600
-	addi $t0, $zero, 50
-	sw $t0, 0($t9)
-	addi $t0, $zero, 0
-	sw $t0, 4($t9)
-	addi $t0, $zero, 0
-	sw $t0, 8($t9)
+	addi $t5, $zero, 50
+	sw $t5, 0($t9)
+	addi $t5, $zero, 0
+	sw $t5, 4($t9)
+	addi $t5, $zero, 0
+	sw $t5, 8($t9)
 	lw $t0, 8($t9)
 	slti $t0, $t0, 50
 	blez $t0 done0
 loop0:
-	addi $t0, $zero, 0
-	sw $t0, 12($t9)
+	addi $t5, $zero, 0
+	sw $t5, 12($t9)
 	lw $t0, 12($t9)
 	slti $t0, $t0, 50
 	blez $t0 done1
@@ -49,13 +49,13 @@ done1:
 	xori $t0, $t0, 1
 	blez $t0 loop0
 done0:
-	addi $t0, $zero, 0
-	sw $t0, 12($t9)
-	addi $t0, $zero, 0
-	sw $t0, 8($t9)
+	addi $t5, $zero, 0
+	sw $t5, 12($t9)
+	addi $t5, $zero, 0
+	sw $t5, 8($t9)
 loop3:
-	addi $t0, $zero, 0
-	sw $t0, 16($t9)
+	addi $t5, $zero, 0
+	sw $t5, 16($t9)
 loop4:
 	lw $t0, 8($t9)
 	addu $t1, $zero, $t0
