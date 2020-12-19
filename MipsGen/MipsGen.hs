@@ -96,6 +96,7 @@ compileSt0 = (env0, 0, "")
 (?==) :: Expr -> Expr -> Expr
 (?==) = Equal
 
+infixl 5 ?+
 (?+) :: Expr -> Expr -> Expr
 (?+) = Add
 
