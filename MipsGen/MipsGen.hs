@@ -32,7 +32,8 @@ data Stmt
   | Assign Expr Expr
   | Inc Expr
   | IF Expr Stmt Stmt
-  | For Expr Int Int Stmt -- For (Var _) st ed Block, the range is [st,ed)
+  | ForR Expr Int Int Stmt -- ForR (Var _) st ed Block, the range is [st,ed)
+  | For Stmt Expr Stmt Stmt  -- real C for-loop: For begin cond update body
   | Block [Stmt]
   | NOP
 
@@ -265,8 +266,8 @@ compile (IF cond thenStmt elseStmt) =
     appendCode $ doneL ++ ":\n" -- done label  
 
 
-compile (For v@Var{} st ed bodyStmt) =
-  if st > ed then error "Bad range in for statement"
+compile (ForR v@Var{} st ed bodyStmt) =
+  if st > ed then error "Bad range in for-range statement"
   else do
     (env, curLabel, _) <- get 
     let label = "loop" ++ show curLabel
@@ -278,6 +279,24 @@ compile (For v@Var{} st ed bodyStmt) =
     appendCode $ eval env (v ?< Val ed)
     appendCode $ eval env (Reg evalTmpReg `Xor` Val 1)  -- cond = not cond
     appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ label ++ "\n" -- if cond goto loop
+
+compile (For begin cond update body) =
+  do
+    (env, curLabel, _) <- get 
+    let label = show curLabel
+        loopL = "loop" ++ label
+        doneL = "done" ++ label
+    incLabel  -- update label 
+    compile begin   -- begin statement
+    appendCode $ eval env cond  -- judge condition
+    appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ doneL ++ "\n" -- if !cond goto done
+    appendCode $ loopL ++ ":\n"
+    compile body
+    compile update
+    appendCode $ eval env cond
+    appendCode $ eval env (Reg evalTmpReg `Xor` Val 1)  -- cond = not cond
+    appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ loopL ++ "\n" -- if cond goto loop
+    appendCode $ doneL ++ ":\n"
 
 compile (Block []) = return () -- do nothing
 compile (Block (x : xs)) =
@@ -291,7 +310,7 @@ compile NOP = appendCode "\tnop\n"
 {- errors -}
 compile (Assign _ _) = error "cannot assign to a right value"
 compile (Inc _) = error "cannot assign to a right value"
-compile For {} = error "syntax error in for-statement"
+compile ForR {} = error "syntax error in for-range-statement"
 
 runCompile :: Stmt -> String
 runCompile s =

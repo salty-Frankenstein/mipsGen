@@ -8,7 +8,7 @@ main = do
       arr "fibs" ?! val 0 ?= val 0              -- fibs[0] = 0
       arr "fibs" ?! val 1 ?= val 1              -- fibs[1] = 1
       mDEF "i"                                  -- define loop variable
-      mFOR (var "i") 2 20 $ mDO $ do            -- for i in range(0, 40)
+      mFORR (var "i") 2 20 $ mDO $ do            -- for i in range(0, 40)
         mDEF "i-1"
         mDEF "i-2"
         var "i-1" ?= var "i" ?+ val (-1)
