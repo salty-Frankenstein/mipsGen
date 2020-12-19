@@ -9,6 +9,7 @@ stAddr = if debug then 0x10040000 else 0
 baseReg = "t9" -- register for heap base address
 
 evalTmpReg = "t0"
+tmpReg2 = "t5"
 addrTmpReg = "t3"
 
 cmpReg1 = "t1"
@@ -227,8 +228,9 @@ compile (Assign (Var v idx) (Reg r)) =
 {- assign variables with imm -}
 compile (Assign v@Var{} e@(Val _)) =
   do
-    compile (Reg evalTmpReg ?= e)
-    compile (v ?= Reg evalTmpReg)
+    -- use another temp reg since $t0 will be flushed while evaluating
+    compile (Reg tmpReg2 ?= e)
+    compile (v ?= Reg tmpReg2)
 
 {- otherwise: assign variables with expr -}
 compile (Assign v@Var{} e) =
@@ -236,8 +238,8 @@ compile (Assign v@Var{} e) =
     env <- getEnv
     appendCode $ eval env e
     -- use another temp reg since $t0 will be flushed while evaluating
-    compile (Reg cmpReg1 ?= Reg evalTmpReg) 
-    compile (v ?= Reg cmpReg1)
+    compile (Reg tmpReg2 ?= Reg evalTmpReg) 
+    compile (v ?= Reg tmpReg2)
 
 compile (Inc (Reg s)) =
   appendCode $ "\taddi $" ++ s ++ ", $" ++ s ++ ", 1" ++ "\n"
