@@ -1,3 +1,7 @@
+addi $t0, $zero, 5
+addi $t1, $zero, 3
+mul $t0, $t1, $t0
+
 addi $t0, $zero, 1
 addi $t1, $zero, 1
 addi $t2, $zero, 1

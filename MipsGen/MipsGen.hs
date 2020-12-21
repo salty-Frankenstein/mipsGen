@@ -23,8 +23,10 @@ data Expr
   = Val Int
   | Reg String
   | Var String Expr -- a variable or an array with index
-  | Lt Expr Expr -- less than
+  | Lt Expr Expr    -- less than
+  | Le Expr Expr    -- less or equal
   | Equal Expr Expr
+  | NEqual Expr Expr  -- not equal
   | And Expr Expr -- logical and
   | Xor Expr Expr
   | Add Expr Expr
@@ -98,9 +100,17 @@ infixr 4 ?<
 (?<) :: Expr -> Expr -> Expr
 (?<) = Lt
 
+infixr 4 ?<=
+(?<=) :: Expr -> Expr -> Expr
+(?<=) = Le
+
 infixr 4 ?==
 (?==) :: Expr -> Expr -> Expr
 (?==) = Equal
+
+infix 4 ?!=
+(?!=) :: Expr -> Expr -> Expr
+(?!=) = NEqual
 
 infixr 3 ?&&
 (?&&) :: Expr -> Expr -> Expr
@@ -146,6 +156,15 @@ eval env (Lt v1@Var{} v2@Var{}) =
   let movV2ToC1 = "\taddu $" ++ cmpReg1 ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
     in eval env v2 ++ movV2ToC1 ++ eval env (v1 ?< Reg cmpReg1)
 
+{- less || equal -}
+{-
+  a <= b
+  not (b < a)
+-}
+eval env (Le e1 e2) =
+  eval env (e2 ?< e1)
+  ++ "\txori $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 1\n" -- t0 <- not t0
+
 {- equal -}
 {- 
         a == b
@@ -182,6 +201,11 @@ eval env (Equal e1 e2)=
   ++ eval env e2
   ++ "\taddu $" ++ rightReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
   ++ eval env (Reg leftReg ?== Reg rightReg)
+
+{- not equal -}
+eval env (NEqual e1 e2) =
+  eval env (Equal e1 e2)  -- t0 <- e1 == e2
+  ++ "\txori $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 1\n" -- t0 <- not t0
 
 {- and -}
 {-

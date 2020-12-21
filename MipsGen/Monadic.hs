@@ -3,8 +3,10 @@ module MipsGen.Monadic (
     runCompile,
     mDEF, mARR, mWHILE, mIF, mFOR, mFORR, mDO, (?!), (?=), mINC, mNOP, 
     (^=),  --non monadic version
-    (?<), (?==), (?&&), (?+),
-    var, arr, val, chr, reg, nop, inc
+    _if, _while, --non monadic version
+    (?<), (?<=), (?==), (?!=), (?&&), (?+),
+    var, arr, val, chr, reg, nop, inc,
+    StmtM
 ) where
 
 import Control.Monad.Writer
@@ -68,3 +70,6 @@ mNOP = tell [NOP]
 
 mDO :: StmtM -> Stmt
 mDO stmt = Block $ snd $ runWriter stmt
+
+_if = IF
+_while = While
