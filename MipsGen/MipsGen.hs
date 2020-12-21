@@ -33,6 +33,7 @@ data Stmt
   | Assign Expr Expr
   | Inc Expr
   | IF Expr Stmt Stmt
+  | While Expr Stmt   -- while loop
   | ForR Expr Int Int Stmt -- ForR (Var _) st ed Block, the range is [st,ed)
   | For Stmt Expr Stmt Stmt  -- real C for-loop: For begin cond update body
   | Block [Stmt]
@@ -268,7 +269,24 @@ compile (IF cond thenStmt elseStmt) =
     compile elseStmt
     appendCode $ doneL ++ ":\n" -- done label  
 
+{- while loop -}
+compile (While cond body) =
+  do
+    (env, curLabel, _) <- get 
+    let label = show curLabel
+        loopL = "loop" ++ label
+        doneL = "done" ++ label
+    incLabel  -- update label
+    appendCode $ eval env cond  -- judge condition
+    appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ doneL ++ "\n" -- if !cond goto done
+    appendCode $ loopL ++ ":\n"
+    compile body
+    appendCode $ eval env cond  -- judge condition
+    appendCode $ eval env (Reg evalTmpReg `Xor` Val 1)  -- cond = not cond
+    appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ loopL ++ "\n" -- if cond goto loop
+    appendCode $ doneL ++ ":\n"
 
+{- for range loop -}
 compile (ForR v@Var{} st ed bodyStmt) =
   if st > ed then error "Bad range in for-range statement"
   else do
@@ -283,6 +301,7 @@ compile (ForR v@Var{} st ed bodyStmt) =
     appendCode $ eval env (Reg evalTmpReg `Xor` Val 1)  -- cond = not cond
     appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ label ++ "\n" -- if cond goto loop
 
+{- for loop -}
 compile (For begin cond update body) =
   do
     (env, curLabel, _) <- get 

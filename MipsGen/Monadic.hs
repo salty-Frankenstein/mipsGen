@@ -1,19 +1,24 @@
 {- for monadic syntax -}
 module MipsGen.Monadic (
     runCompile,
-    mDEF, mARR, mIF, mFOR, mFORR, mDO, (?!), (?=), mINC, mNOP, 
+    mDEF, mARR, mWHILE, mIF, mFOR, mFORR, mDO, (?!), (?=), mINC, mNOP, 
     (^=),  --non monadic version
     (?<), (?==), (?+),
-    var, arr, val, reg, nop, inc
+    var, arr, val, chr, reg, nop, inc
 ) where
 
 import Control.Monad.Writer
 import MipsGen.MipsGen hiding ((?=))
+import Data.Char (ord)
 
 type StmtM = Writer [Stmt] ()
 
 var :: String -> Expr
 var s = Var s (Val 0)
+
+chr :: Char -> Expr
+chr c = Val $ ord c
+
 val = Val
 reg = Reg
 nop = NOP
@@ -48,6 +53,9 @@ mINC e = tell [Inc e]
 
 mIF :: Expr -> Stmt -> Stmt -> StmtM
 mIF c s1 s2 = tell [IF c s1 s2]
+
+mWHILE :: Expr -> Stmt -> StmtM
+mWHILE c b = tell [While c b]
 
 mFOR :: (Stmt, Expr, Stmt) -> Stmt -> StmtM
 mFOR (s, c, u) b = tell [For s c u b]
