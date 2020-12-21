@@ -10,6 +10,8 @@ baseReg = "t9" -- register for heap base address
 
 evalTmpReg = "t0"
 tmpReg2 = "t5"
+leftReg = "t6"
+rightReg = "t7"
 addrTmpReg = "t3"
 
 cmpReg1 = "t1"
@@ -23,6 +25,7 @@ data Expr
   | Var String Expr -- a variable or an array with index
   | Lt Expr Expr -- less than
   | Equal Expr Expr
+  | And Expr Expr -- logical and
   | Xor Expr Expr
   | Add Expr Expr
 
@@ -91,11 +94,17 @@ compileSt0 = (env0, 0, "")
 (?=) :: Expr -> Expr -> Stmt
 (?=) = Assign
 
+infixr 4 ?<
 (?<) :: Expr -> Expr -> Expr
 (?<) = Lt
 
+infixr 4 ?==
 (?==) :: Expr -> Expr -> Expr
 (?==) = Equal
+
+infixr 3 ?&&
+(?&&) :: Expr -> Expr -> Expr
+(?&&) = And
 
 infixl 5 ?+
 (?+) :: Expr -> Expr -> Expr
@@ -156,6 +165,9 @@ eval env (Equal (Reg a) (Reg b)) =
       step4 = "\tsll $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 31\n"
             ++"\tsrl $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 31\n"
     in step1 ++ step2 ++ step3 ++ step4
+eval env (Equal r@(Reg _) (Val n)) =
+  "\taddi $" ++ cmpReg3 ++ ", $zero, " ++ show n ++ "\n"
+  ++ eval env (r ?== Reg cmpReg3)
 eval env (Equal v@Var{} a@(Reg _)) =
   eval env v ++ eval env (Reg evalTmpReg ?== a) 
 eval env (Equal v@Var{} n@(Val _)) =
@@ -163,8 +175,50 @@ eval env (Equal v@Var{} n@(Val _)) =
 eval env (Equal v1@Var{} v2@Var{}) =
   let movV2ToC3 = "\taddu $" ++ cmpReg3 ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
     in eval env v2 ++ movV2ToC3 ++ eval env (v1 ?== Reg cmpReg3)
+{- otherwise -}
+eval env (Equal e1 e2)= 
+  eval env e1 
+  ++ "\taddu $" ++ leftReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env e2
+  ++ "\taddu $" ++ rightReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env (Reg leftReg ?== Reg rightReg)
 
-{- xor-}
+{- and -}
+{-
+    nor a b = !(a || b) = !a && !b
+    and a b = !(!a) && !(!b) = !(!a || !b) = nor (!a) (!b)
+
+    1. t1 <- xor a 1
+    2. t2 <- xor b 1
+    3. t0 <- nor t1 t2
+    4. t0 <- (t0 << 31) >> 31 
+-}
+eval env (And (Reg a) (Reg b)) = 
+  let step1 = "\txori $" ++ cmpReg1 ++ ", $" ++ a ++ ", 1\n"
+      step2 = "\txori $" ++ cmpReg2 ++ ", $" ++ b ++ ", 1\n"
+      step3 = "\tnor $" ++ evalTmpReg ++ ", $" ++ cmpReg1 ++ ", $" ++ cmpReg2 ++ "\n"
+      step4 = "\tsll $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 31\n"
+            ++"\tsrl $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 31\n"
+      in step1 ++ step2 ++ step3 ++ step4
+eval env (And r@(Reg _) (Val n)) =
+  "\taddi $" ++ cmpReg3 ++ ", $zero, " ++ show n ++ "\n"
+  ++ eval env (r ?&& Reg cmpReg3)
+eval env (And v@Var{} a@(Reg _)) =
+  eval env v ++ eval env (Reg evalTmpReg ?&& a) 
+eval env (And v@Var{} n@(Val _)) =
+  eval env v ++ eval env (Reg evalTmpReg ?&& n)
+eval env (And v1@Var{} v2@Var{}) =
+  let movV2ToC3 = "\taddu $" ++ cmpReg3 ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+    in eval env v2 ++ movV2ToC3 ++ eval env (v1 ?&& Reg cmpReg3)
+{- otherwise -}
+eval env (And e1 e2)= 
+  eval env e1 
+  ++ "\taddu $" ++ leftReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env e2
+  ++ "\taddu $" ++ rightReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env (Reg leftReg ?&& Reg rightReg)
+
+{- xor -}
 eval _ (Xor (Reg a) (Val n)) = 
   "\txori $" ++ evalTmpReg ++ ", $" ++ a ++ ", " ++ show n ++ "\n"
 

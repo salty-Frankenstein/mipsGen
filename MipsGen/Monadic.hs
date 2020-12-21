@@ -3,7 +3,7 @@ module MipsGen.Monadic (
     runCompile,
     mDEF, mARR, mWHILE, mIF, mFOR, mFORR, mDO, (?!), (?=), mINC, mNOP, 
     (^=),  --non monadic version
-    (?<), (?==), (?+),
+    (?<), (?==), (?&&), (?+),
     var, arr, val, chr, reg, nop, inc
 ) where
 
