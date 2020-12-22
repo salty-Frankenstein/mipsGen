@@ -4,7 +4,7 @@ module MipsGen.Monadic (
     mDEF, mARR, mWHILE, mIF, mFOR, mFORR, mDO, (?!), (?=), mINC, mNOP, 
     (^=),  --non monadic version
     _if, _while, --non monadic version
-    (?<), (?<=), (?==), (?!=), (?&&), (?+),
+    (?<), (?<=), (?==), (?!=), (?&&), (?+), (?-), (?*),
     var, arr, val, chr, reg, nop, inc,
     StmtM
 ) where

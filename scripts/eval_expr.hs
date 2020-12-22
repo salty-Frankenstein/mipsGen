@@ -3,7 +3,8 @@ import Data.Char (ord)
 
 exprInit :: StmtM
 exprInit = do
-  let input = "1+2-5"
+  let --input = "9+(1+2)*(5-3)*4-7"
+      input = "(9+6*6)-3"
       strInt = map ord input
       valList = map val strInt
       varList = map (\i -> arr "expr" ?! val i) [0..]
@@ -20,11 +21,12 @@ main :: IO ()
 main = do
   writeFile "./eval_expr.asm" $ runCompile $ 
     mDO $ do
-      let max = 20   -- constant
+      let max = 31   -- constant
       mDEF "res"  -- for result
+      mARR "pp" 7 --------
       mARR "expr" max
       exprInit    -- initailize the expression
-      
+      mDEF "pp2"  --------
       mARR "post" max  -- for post expression
       mDEF "post_ed"
 
@@ -42,6 +44,7 @@ main = do
           num_stack = arr "num_stack"; num_ed = var "num_ed"
           i = var "i"; chr0 = var "chr0"; chr9 = var "chr9"
 
+      {- mid to post expr -}
       op_ed ?= val 0
       post_ed ?= val 0
 
@@ -56,11 +59,81 @@ main = do
                 op_stack ?! op_ed ?= expr ?! i
                 mINC op_ed)
               (_if(expr ?! i ?== chr ')')
-                (_while(op_stack ?! (op_ed ?+ val (-1)) ?!= chr '(') $ mDO $ do
-                  -- post ?! post_ed ?= op_stack ?! (op_ed ?+ val (-1))
-                  mINC post_ed
-                --  op_ed ?= op_ed ?+ val (-1)
+                (mDO $ do 
+                  mWHILE(op_stack ?! (op_ed ?- val 1) ?!= chr '(') $ mDO $ do
+                    post ?! post_ed ?= op_stack ?! (op_ed ?- val 1)
+                    mINC post_ed
+                    op_ed ?= op_ed ?- val 1
+                  op_ed ?= op_ed ?- val 1
                 )
-                nop)
+                (_if(expr ?! i ?== chr '*' ?&& 
+                    op_stack ?! (op_ed ?- val 1) ?!= chr '*')
+                  (mDO $ do
+                    op_stack ?! op_ed ?= expr ?! i
+                    mINC op_ed)
+                  (mDO $ do 
+                    mIF(expr ?! i ?== chr '*')
+                      (_while(op_ed ?!= val 0 ?&& 
+                          op_stack ?! (op_ed ?- val 1) ?== chr '*') $ mDO $ do 
+                        post ?! post_ed ?= op_stack ?! (op_ed ?- val 1)
+                        mINC post_ed
+                        op_ed ?= op_ed ?- val 1
+                      )
+                      (_while(op_ed ?!= val 0 ?&&
+                          op_stack ?! (op_ed ?- val 1) ?!= chr '(') $ mDO $ do
+                        post ?! post_ed ?= op_stack ?! (op_ed ?- val 1)
+                        mINC post_ed
+                        op_ed ?= op_ed ?- val 1
+                      )
+                    op_stack ?! op_ed ?= expr ?! i
+                    mINC op_ed
+                  )
+                )
+              )
             )
 
+      mWHILE(op_ed ?!= val 0) $ mDO $ do
+        post ?! post_ed ?= op_stack ?! (op_ed ?- val 1)
+        mINC post_ed
+        op_ed ?= op_ed ?- val 1
+      
+      {- eval post expr -}
+      num_ed ?= val 0
+
+      mFOR(i ^= val 0, i ?< post_ed, inc i)
+        (_if(chr0 ?< post ?! i ?&& post ?! i ?<= chr9)
+          (mDO $ do
+            num_stack ?! num_ed ?= post ?! i ?- chr '0'
+            mINC num_ed
+          )
+          (mDO $ do
+            mDEF "left" >> mDEF "right"
+            let left = var "left"; right = var "right"
+            right ?= num_stack ?! (num_ed ?- val 1)
+            num_ed ?= num_ed ?- val 1
+            left ?= num_stack ?! (num_ed ?- val 1)
+            num_ed ?= num_ed ?- val 1
+            mIF(post ?! i ?== chr '+')
+              (mDO $ do
+                num_stack ?! num_ed ?= left ?+ right
+                mINC num_ed
+              )
+              (_if(post ?! i ?== chr '-')
+                (mDO $ do
+                  num_stack ?! num_ed ?= left ?- right
+                  mINC num_ed
+                ) 
+                (_if(post ?! i ?== chr '*')
+                  (mDO $ do
+                    num_stack ?! num_ed ?= left ?* right
+                    mINC num_ed
+                  )
+                  nop
+                )
+              )
+
+          )
+        )
+
+      var "res" ?= num_stack ?! (num_ed ?+ val (-1))
+        

@@ -30,6 +30,8 @@ data Expr
   | And Expr Expr -- logical and
   | Xor Expr Expr
   | Add Expr Expr
+  | Sub Expr Expr
+  | Mul Expr Expr
 
 
 data Stmt
@@ -116,9 +118,13 @@ infixr 3 ?&&
 (?&&) :: Expr -> Expr -> Expr
 (?&&) = And
 
-infixl 5 ?+
-(?+) :: Expr -> Expr -> Expr
+infixl 6 ?+
+infixl 6 ?-
+infixl 7 ?*
+(?+), (?-), (?*) :: Expr -> Expr -> Expr
 (?+) = Add
+(?-) = Sub
+(?*) = Mul
 
 -- evaluate the expression in an environment
 -- the result should be loaded to $t0
@@ -135,13 +141,13 @@ eval env (Var v idx) =
           if i < size then
             "\tlw $" ++ evalTmpReg ++ ", " ++ show (addr + 4*i) ++ "($" ++ baseReg ++ ")\n"
           else error $ "Array index out of range: " ++ v  -- this case is for arrays
-        var@Var{} ->
+        var ->  -- it can be any expr
           let evalIdx = eval env var  -- eval index to tmp
               mul4 = "\tsll $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 2\n"  -- TODO
               addToBase = eval env (Reg evalTmpReg ?+ Reg baseReg) in -- tmp = tmp + base
             evalIdx ++ mul4 ++ addToBase 
             ++ "\tlw $" ++ evalTmpReg ++ ", " ++ show addr ++ "($" ++ evalTmpReg ++ ")\n"
-        _ -> error "TODO"
+        -- _ -> error "TODO"
 
 {- less than -}
 eval _ (Lt (Reg a) (Reg b)) =
@@ -258,6 +264,40 @@ eval env (Add v@Var{} r@(Reg _)) =
 eval env (Add v1@Var{} v2@Var{}) =
   let movV2ToC1 = "\taddu $" ++ cmpReg1 ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
     in eval env v2 ++ movV2ToC1 ++ eval env (v1 ?+ Reg cmpReg1)
+{- otherwise -}
+eval env (Add e1 e2)= 
+  eval env e1 
+  ++ "\taddu $" ++ leftReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env e2
+  ++ "\taddu $" ++ rightReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env (Reg leftReg ?+ Reg rightReg)
+
+{- sub -}
+eval env (Sub (Reg a) (Val n)) = 
+  eval env (Reg a ?+ Val (-n))
+eval _ (Sub (Reg a) (Reg b)) = 
+  "\tsubu $" ++ evalTmpReg ++ ", $" ++ a ++ ", $" ++ b ++ "\n"
+eval env (Sub v@Var{} (Val n)) =
+  eval env (v ?+ Val (-n))
+{- otherwise -}
+eval env (Sub e1 e2)= 
+  eval env e1 
+  ++ "\taddu $" ++ leftReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env e2
+  ++ "\taddu $" ++ rightReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env (Reg leftReg ?- Reg rightReg)
+
+{- mul -}
+eval _ (Mul (Reg a) (Reg b)) = 
+  "\tmul $" ++ evalTmpReg ++ ", $" ++ a ++ ", $" ++ b ++ "\n"
+{- otherwise -}
+eval env (Mul e1 e2)= 
+  eval env e1 
+  ++ "\taddu $" ++ leftReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env e2
+  ++ "\taddu $" ++ rightReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env (Reg leftReg ?* Reg rightReg)
+
 
 {- errors -}
 eval _ (Xor _ _) = error "Unknown expression pattern: xor"
@@ -269,10 +309,10 @@ compile (MACRO s) = appendCode s
 {- it changes the compiler state, with no result -}
 compile (Define v s) = newVariable v s
 {- assign register with imm -}
-compile (Assign (Reg s) e@(Val _)) =
+compile (Assign (Reg s) (Val n)) =
   do
     env <- getEnv
-    appendCode $ "\taddi $" ++ s ++ ", $zero, " ++ eval env e ++ "\n"
+    appendCode $ "\taddi $" ++ s ++ ", $zero, " ++ show n ++ "\n"
 {- assign register with register -}
 compile (Assign (Reg r1) (Reg r2)) =
   appendCode $ "\taddu $" ++ r1 ++ ", $zero, $" ++ r2 ++ "\n"
@@ -340,6 +380,7 @@ compile (IF cond thenStmt elseStmt) =
         falseL = "false_label" ++ lID
         doneL = "done_label" ++ lID
     appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ falseL ++ "\n" -- if !cond goto false_label
+    compile NOP --
     incLabel  -- update label
     compile thenStmt
     appendCode $ "\tj " ++ doneL ++ "\n\tnop\n"
@@ -357,11 +398,13 @@ compile (While cond body) =
     incLabel  -- update label
     appendCode $ eval env cond  -- judge condition
     appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ doneL ++ "\n" -- if !cond goto done
+    compile NOP --
     appendCode $ loopL ++ ":\n"
     compile body
     appendCode $ eval env cond  -- judge condition
     appendCode $ eval env (Reg evalTmpReg `Xor` Val 1)  -- cond = not cond
     appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ loopL ++ "\n" -- if cond goto loop
+    compile NOP --
     appendCode $ doneL ++ ":\n"
 
 {- for range loop -}
@@ -378,6 +421,7 @@ compile (ForR v@Var{} st ed bodyStmt) =
     appendCode $ eval env (v ?< Val ed)
     appendCode $ eval env (Reg evalTmpReg `Xor` Val 1)  -- cond = not cond
     appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ label ++ "\n" -- if cond goto loop
+    compile NOP --
 
 {- for loop -}
 compile (For begin cond update body) =
@@ -390,12 +434,14 @@ compile (For begin cond update body) =
     compile begin   -- begin statement
     appendCode $ eval env cond  -- judge condition
     appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ doneL ++ "\n" -- if !cond goto done
+    compile NOP --
     appendCode $ loopL ++ ":\n"
     compile body
     compile update
     appendCode $ eval env cond
     appendCode $ eval env (Reg evalTmpReg `Xor` Val 1)  -- cond = not cond
     appendCode $ "\tblez $" ++ evalTmpReg ++ " " ++ loopL ++ "\n" -- if cond goto loop
+    compile NOP --
     appendCode $ doneL ++ ":\n"
 
 compile (Block []) = return () -- do nothing
