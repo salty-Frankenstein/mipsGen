@@ -1,3 +1,15 @@
+j main
+f1:
+addu $t0, $t1, $t2
+jr $ra
+
+
+main:
+addi $t1, $zero, 1
+addi $t2, $zero, 2
+jal f1
+
+
 addi $t0, $zero, 5
 addi $t1, $zero, 3
 mul $t0, $t1, $t0

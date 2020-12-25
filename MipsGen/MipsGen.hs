@@ -7,6 +7,8 @@ debug = True
 stAddr = if debug then 0x10040000 else 0
 
 baseReg = "t9" -- register for heap base address
+stackReg = "sp"
+frameReg = "fp"
 
 evalTmpReg = "t0"
 tmpReg2 = "t5"
@@ -22,7 +24,8 @@ initCode = "\taddi $" ++ baseReg ++ ", $zero, " ++ show stAddr ++ "\n"
 data Expr
   = Val Int
   | Reg String
-  | Var String Expr -- a variable or an array with index
+  | Var Symbol Expr -- a variable or an array with index
+  | Call Symbol     -- call a procedure
   | Lt Expr Expr    -- less than
   | Le Expr Expr    -- less or equal
   | Equal Expr Expr
@@ -36,7 +39,8 @@ data Expr
 
 data Stmt
   = MACRO String
-  | Define String Size -- define a variable, or an Array, with a data size
+  | Define Symbol Size -- define a variable, or an Array, with a data size
+  | Proc Symbol [Symbol] Stmt -- define a procedure
   | Assign Expr Expr
   | Inc Expr
   | IF Expr Stmt Stmt
@@ -53,47 +57,56 @@ type LabelID = Int  -- for generating loop labels
 type Code = String  -- the code generated
 
 {- the environment of compiling progress -}
-data Env = Env
-  { symList :: [(Symbol, (Addr, Size))], -- symbol list
-    heapTop :: Addr -- heap top address, for allocating
-  }
+data Env = Env {
+  symList :: [(Symbol, (Addr, Size))],  -- symbol list for variables and arrays
+  funcList :: [(Symbol, String)]        -- function name list
+} 
 
 {- the compiler state -}
-type CompileSt = (Env, LabelID, Code) 
+data CompileSt = ComST Env LabelID Addr Code
 
 {- the compiler monad -}
 {- the compiling environment should be passed by a state monad -}
 type CompileM = State CompileSt
 
 incLabel :: CompileM ()
-incLabel = state $ \(e, l, c) -> ((), (e, l + 1, c))
+incLabel = state $ \(ComST e l h c) -> ((), ComST e (l + 1) h c)
 
 -- add a new variable to an environment
 newVariable :: Symbol -> Size -> CompileM ()
 newVariable v size = do
-  (Env s h, l, c) <- get
+  (ComST (Env s f) l h c) <- get
   case lookup v s of
-    Nothing -> put (Env ((v, (h, size)) : s) (h + 4 * size), l, c)
+    Nothing -> put $ ComST (Env ((v, (h, size)) : s) f) l (h + 4 * size) c
     Just _ -> error $ "redefinition of symbol: " ++ v
 
+newProcedure :: Symbol -> CompileM String
+newProcedure p = do
+  (ComST (Env s f) l h c) <- get
+  let procL = "proc" ++ show l
+  case lookup p f of
+    Nothing -> put $ ComST (Env s $ (p, procL) : f) (l + 1) h c
+    Just _ -> error $ "redefinition of procedure: " ++ p
+  return procL    -- return the label generated
+
 appendCode :: String -> CompileM ()
-appendCode c' = state $ \(e, l, c) -> ((), (e, l, c ++ c'))
+appendCode c' = state $ \(ComST e l h c) -> ((), ComST e l h (c ++ c'))
 
 getEnv :: CompileM Env
 getEnv = do
-  (e, _, _) <- get
+  ComST e _ _ _ <- get
   return e
 
 putEnv :: Env -> CompileM ()
-putEnv e' = state $ \(_, l, c) -> ((), (e', l, c))
+putEnv e' = state $ \(ComST _ l h c) -> ((), ComST e' l h c)
 
 -- empty environment
 
 env0 :: Env
-env0 = Env [] 0
+env0 = Env [] []
 
 compileSt0 :: CompileSt
-compileSt0 = (env0, 0, "")
+compileSt0 = ComST env0 0 0 ""
 
 (?=) :: Expr -> Expr -> Stmt
 (?=) = Assign
@@ -129,7 +142,8 @@ infixl 7 ?*
 -- evaluate the expression in an environment
 -- the result should be loaded to $t0
 eval :: Env -> Expr -> String
-eval _ (Val n) = show n
+eval _ (Val n) = 
+  "\taddi $" ++ evalTmpReg ++ ", $zero, " ++ show n ++ "\n"
 eval env (Var v idx) =
   case lookup v (symList env) of
     Nothing -> error $ "Undefined variable: " ++ v
@@ -161,6 +175,13 @@ eval env (Lt v@Var{} n@(Val _)) =
 eval env (Lt v1@Var{} v2@Var{}) =
   let movV2ToC1 = "\taddu $" ++ cmpReg1 ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
     in eval env v2 ++ movV2ToC1 ++ eval env (v1 ?< Reg cmpReg1)
+{- otherwise -}
+eval env (Lt e1 e2)= 
+  eval env e1 
+  ++ "\taddu $" ++ leftReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env e2
+  ++ "\taddu $" ++ rightReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env (Reg leftReg ?< Reg rightReg)
 
 {- less || equal -}
 {-
@@ -374,7 +395,7 @@ compile (Inc v@Var{}) =
 compile (IF (Val _) _ _) = error "syntax error in if-statement"
 compile (IF cond thenStmt elseStmt) =
   do
-    (env, curLabel, _) <- get
+    ComST env curLabel _ _ <- get
     appendCode $ eval env cond -- condition expr, result in $t0
     let lID = show curLabel
         falseL = "false_label" ++ lID
@@ -391,7 +412,7 @@ compile (IF cond thenStmt elseStmt) =
 {- while loop -}
 compile (While cond body) =
   do
-    (env, curLabel, _) <- get 
+    ComST env curLabel _ _ <- get 
     let label = show curLabel
         loopL = "loop" ++ label
         doneL = "done" ++ label
@@ -411,7 +432,7 @@ compile (While cond body) =
 compile (ForR v@Var{} st ed bodyStmt) =
   if st > ed then error "Bad range in for-range statement"
   else do
-    (env, curLabel, _) <- get 
+    ComST env curLabel _ _ <- get 
     let label = "loop" ++ show curLabel
     incLabel  -- update label
     compile $ v ?= Val st
@@ -426,7 +447,7 @@ compile (ForR v@Var{} st ed bodyStmt) =
 {- for loop -}
 compile (For begin cond update body) =
   do
-    (env, curLabel, _) <- get 
+    ComST env curLabel _ _ <- get 
     let label = show curLabel
         loopL = "loop" ++ label
         doneL = "done" ++ label
@@ -444,10 +465,21 @@ compile (For begin cond update body) =
     compile NOP --
     appendCode $ doneL ++ ":\n"
 
+compile (Proc name para body) = 
+  do
+    oldEnv@(Env _ oldf) <- getEnv 
+    procL <- newProcedure name   -- define the procedure
+    appendCode $ procL ++ ":\n"
+    putEnv (Env [] oldf)     -- set a new frame
+    compile $ Block $ map (`Define` 0) para   -- define parameters
+    compile body
+    appendCode "\tjr $ra\n" -- return
+    putEnv oldEnv   -- set the original env
+
 compile (Block []) = return () -- do nothing
 compile (Block (x : xs)) =
   do
-    (oldEnv, _, _) <- get -- saving the old environment
+    ComST oldEnv _ _ _ <- get -- saving the old environment
     compile x
     compile (Block xs) -- complie the whole block with the environment changed
     putEnv oldEnv -- set the original env for scoping(??)
@@ -460,5 +492,5 @@ compile ForR {} = error "syntax error in for-range-statement"
 
 runCompile :: Stmt -> String
 runCompile s =
-  let (_, _, c) = execState (compile s) compileSt0
+  let ComST _ _ _ c = execState (compile s) compileSt0
    in initCode ++ c
