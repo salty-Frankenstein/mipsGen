@@ -36,6 +36,8 @@ data Expr
   | Var Symbol Expr -- a variable or an array with index
   | Call Symbol [Expr]    -- call a procedure, with args epressions
   | CallExt Symbol [Expr] -- call a external procedure, without compile-time checking
+  | Deref Expr  -- dereference of pointer
+  | Ref Expr  -- get the address of a variable
   | Lt Expr Expr    -- less than
   | Le Expr Expr    -- less or equal
   | Equal Expr Expr
@@ -212,6 +214,17 @@ eval env (Var v idx) =
             evalIdx ++ mul4 ++ addToBase 
             ++ "\tlw $" ++ evalTmpReg ++ ", " ++ show addr ++ "($" ++ evalTmpReg ++ ")\n"
         -- _ -> error "TODO"
+
+{- dereference -}
+eval env (Deref e) = 
+  eval env e
+  ++ "\tlw $" ++ evalTmpReg ++ ", ($" ++ evalTmpReg ++ ")\n"  
+
+eval env (Ref (Var v _)) =
+  case lookup v (symList env) of
+    Nothing -> error $ "Undefined variable: " ++ v
+    Just (addr, size) ->
+      "\taddi $" ++ evalTmpReg ++ ", $" ++ frameReg ++ ", " ++ show addr ++ "\n"
 
 {- less than -}
 eval _ (Lt (Reg a) (Reg b)) =

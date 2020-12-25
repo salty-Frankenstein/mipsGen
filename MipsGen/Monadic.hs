@@ -6,7 +6,7 @@ module MipsGen.Monadic (
     (^=),  --non monadic version
     _if, _while, _return,--non monadic version
     (?<), (?<=), (?==), (?!=), (?&&), (?+), (?-), (?*),
-    var, arr, val, chr, reg, nop, inc, call, callext,
+    var, arr, val, chr, reg, nop, inc, call, callext, deref, ref,
     StmtM, Stmt, Mode(..)
 ) where
 
@@ -29,6 +29,8 @@ nop = NOP
 inc = Inc
 call = Call
 callext = CallExt
+deref = Deref
+ref = Ref
 
 newtype Arr = Arr String
 arr = Arr

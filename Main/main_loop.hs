@@ -1,5 +1,7 @@
 import MipsGen.Monadic
 import Main.Fact
+import Main.String
+import Data.Char ( ord ) 
 
 includes :: IO String
 includes = do
@@ -10,6 +12,8 @@ includes = do
 definitions :: StmtM
 definitions = do
   fact
+  stringLen
+  stringCmp 
 
 mainLoop :: Stmt
 mainLoop = 
@@ -19,14 +23,20 @@ mainLoop =
     mMACRO "main:\n"
 
     mDEF "res"
-    var "res" ?= call "fact" [val 10]
+    
+    mARR "str1" 20
+    mARR "str2" 20
+    stringInit "str1" "abcde"
+    stringInit "str2" "abdde"
+
+    var "res" ?= call "stringCmp" [ref $ var "str1", ref $ var "str2"]
 
     mWHILE(val 1) $ mDO $ do  -- main loop
       mNOP
 
 main :: IO ()
 main = do
-  let mainCode = runCompile Main $ mainLoop
+  let mainCode = runCompile Main mainLoop
   includeCode <- includes
   writeFile ".\\Main\\main_loop.asm" $ mainCode ++ includeCode
     
