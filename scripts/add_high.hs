@@ -2,8 +2,9 @@ import MipsGen.Monadic
 
 main :: IO ()
 main = do
-  writeFile "./add_high.asm" $ runCompile $ 
+  writeFile ".\\scripts\\add_high.asm" $ runCompile Main $ 
     mDO $ do
+      mMACRO "main:\n"
       let max = 100   -- constant
       mARR "a" max
       mDEF "alen"
@@ -51,7 +52,7 @@ main = do
           (var "carry" ^= val 0)
           (mDO $ do
             var "carry" ?= val 1
-            ansi ?= ansi ?+ val (-10))
+            ansi ?= ansi ?- val 10)
         
       mIF(var "carry")
         (mDO $ do

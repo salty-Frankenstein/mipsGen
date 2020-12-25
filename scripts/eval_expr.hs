@@ -19,7 +19,7 @@ charConst = do
 
 main :: IO ()
 main = do
-  writeFile ".\\scripts\\eval_expr.asm" $ runCompile $ 
+  writeFile ".\\scripts\\eval_expr.asm" $ runCompile Main $ 
     mDO $ do
       let max = 31   -- constant
       mMACRO "main:\n"

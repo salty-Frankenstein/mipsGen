@@ -11,6 +11,7 @@ frameReg = "fp"
 retValReg = "v0"
 retAddrReg = "ra"
 
+{- TODO: change into saved regs -}
 evalTmpReg = "t0"
 tmpReg2 = "t5"
 leftReg = "t6"
@@ -20,16 +21,21 @@ addrTmpReg = "t3"
 cmpReg1 = "t1"
 cmpReg2 = "t2"
 cmpReg3 = "t4"
+
+data Mode = Main | Lib
+
 {- initialize stack -}
+initCode :: Code
 initCode = "\taddi $" ++ frameReg ++ ", $zero, " ++ show (stAddr-4) ++ "\n"
   ++ "\taddi $" ++ stackReg ++ ", $zero, " ++ show (stAddr-4) ++ "\n"
-  ++ "\tj main\n"
-
+  ++ "\tj main\n" 
+      
 data Expr
   = Val Int
   | Reg String
   | Var Symbol Expr -- a variable or an array with index
   | Call Symbol [Expr]    -- call a procedure, with args epressions
+  | CallExt Symbol [Expr] -- call a external procedure, without compile-time checking
   | Lt Expr Expr    -- less than
   | Le Expr Expr    -- less or equal
   | Equal Expr Expr
@@ -64,7 +70,7 @@ type Code = String  -- the code generated
 {- the environment of compiling progress -}
 data Env = Env {
   symList :: [(Symbol, (Addr, Size))],  -- symbol list for variables and arrays
-  funcList :: [(Symbol, (String, Int))] -- function name list, for function label and arg number
+  funcList :: [(Symbol, Int)] -- function name list, for function arg number
 } 
 
 {- the compiler state -}
@@ -116,14 +122,12 @@ newVariable v size = do
     Just _ -> error $ "redefinition of symbol: " ++ v
 
 -- define a proc with name and number of args
-newProcedure :: Symbol -> Int -> CompileM String
+newProcedure :: Symbol -> Int -> CompileM ()
 newProcedure p n = do
   (ComST (Env s f) l h c) <- get
-  let procL = "proc" ++ show l
   case lookup p f of
-    Nothing -> put $ ComST (Env s $ (p, (procL, n)) : f) (l + 1) h c
+    Nothing -> put $ ComST (Env s $ (p, n) : f) l h c
     Just _ -> error $ "redefinition of procedure: " ++ p
-  return procL    -- return the label generated
 
 appendCode :: String -> CompileM ()
 appendCode c' = state $ \(ComST e l h c) -> ((), ComST e l h (c ++ c'))
@@ -369,11 +373,24 @@ eval env (Mul e1 e2)=
 eval env@(Env s f) (Call name args) = 
   case lookup name f of
     Nothing -> error $ "Undefined procedure: " ++ name
-    Just (l, n) -> 
+    Just n -> 
       if n /= length args then error $ "Can match arg number: " ++ name
       else pushArgs (reverse args)
-      ++ "\tjal " ++ l ++ "\n"  -- jump to function
+      ++ "\tjal " ++ name ++ "\n"  -- jump to function
       ++ "\taddu $" ++ evalTmpReg ++ ", $zero, $" ++ retValReg ++ "\n"  -- assign return value
+  where
+    pushArgs :: [Expr] -> String
+    pushArgs [] = ""
+    pushArgs (x:xs) = 
+      eval env x
+      ++ pushReg evalTmpReg
+      ++ pushArgs xs
+
+{- call expr -}
+eval env@(Env s f) (CallExt name args) = 
+  pushArgs (reverse args)
+  ++ "\tjal " ++ name ++ "\n"  -- jump to function
+  ++ "\taddu $" ++ evalTmpReg ++ ", $zero, $" ++ retValReg ++ "\n"  -- assign return value
   where
     pushArgs :: [Expr] -> String
     pushArgs [] = ""
@@ -530,9 +547,9 @@ compile (For begin cond update body) =
 {- define a procedure -}
 compile (Proc name para body) = 
   do
-    procL <- newProcedure name (length para)   -- define the procedure
+    newProcedure name (length para)   -- define the procedure
     ComST (Env olds oldf) _ olda _ <- get
-    appendCode $ procL ++ ":\n"
+    appendCode $ name ++ ":\n"
 
     appendCode $ pushReg retAddrReg   -- push return address
     appendCode $ pushReg frameReg     -- push old fp
@@ -569,7 +586,9 @@ compile (Assign _ _) = error "cannot assign to a right value"
 compile (Inc _) = error "cannot assign to a right value"
 compile ForR {} = error "syntax error in for-range-statement"
 
-runCompile :: Stmt -> String
-runCompile s =
+runCompile :: Mode -> Stmt -> String
+runCompile m s =
   let ComST _ _ _ c = execState (compile s) compileSt0
-   in initCode ++ c
+   in case m of
+     Main -> initCode ++ c
+     _ -> c

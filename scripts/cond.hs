@@ -2,8 +2,9 @@ import MipsGen.Monadic
 
 main :: IO ()
 main = do
-  writeFile "./cond.asm" $ runCompile $ 
+  writeFile ".\\scripts\\cond.asm" $ runCompile Main $ 
     mDO $ do 
+      mMACRO "main:\n"
       mDEF "a"
       mDEF "b"
       var "a" ?= val 10

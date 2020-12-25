@@ -3,3 +3,4 @@
 *.sh
 note.txt
 c_code
+Main/*asm

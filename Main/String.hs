@@ -1,6 +1,7 @@
+module Main.String where
+
 import MipsGen.Monadic
 import Data.Char (ord)
-
 
 charConst :: StmtM 
 charConst = do
@@ -8,8 +9,6 @@ charConst = do
   var "chr0" ?= chr '0'
   var "chr9" ?= chr '9'
 
-main :: IO ()
-main = do
-  writeFile "./eval_expr.asm" $ runCompile $ 
-    mDO $ do
-      return ()
+stringCmp :: StmtM
+stringCmp = do
+  return ()

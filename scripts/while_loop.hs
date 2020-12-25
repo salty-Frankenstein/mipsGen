@@ -2,8 +2,9 @@ import MipsGen.Monadic
 
 main :: IO ()
 main = do
-  writeFile "./while_loop.asm" $ runCompile $
+  writeFile ".\\scripts\\while_loop.asm" $ runCompile Main $
     mDO $ do
+      mMACRO "main:\n"
       mDEF "MAX"
       mDEF "cnt"
       var "MAX" ?= val 50

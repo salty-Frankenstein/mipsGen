@@ -2,8 +2,9 @@ import MipsGen.Monadic
 
 main :: IO ()
 main = do
-  writeFile "./eq.asm" $ runCompile $ 
+  writeFile ".\\scripts\\eq.asm" $ runCompile Main $ 
     mDO $ do 
+      mMACRO "main:\n"
       mDEF "a"
       mDEF "b"
       var "a" ?= val 1

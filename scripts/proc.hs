@@ -2,7 +2,7 @@ import MipsGen.Monadic
 
 main :: IO ()
 main = do
-  writeFile ".\\scripts\\proc.asm" $ runCompile $ 
+  writeFile ".\\scripts\\proc.asm" $ runCompile Main $ 
     mDO $ do
       mPROC "fact" ["n"] $ mDO $ do
         mIF(var "n" ?== val 0)

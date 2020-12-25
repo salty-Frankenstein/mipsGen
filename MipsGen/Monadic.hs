@@ -6,8 +6,8 @@ module MipsGen.Monadic (
     (^=),  --non monadic version
     _if, _while, _return,--non monadic version
     (?<), (?<=), (?==), (?!=), (?&&), (?+), (?-), (?*),
-    var, arr, val, chr, reg, nop, inc, call,
-    StmtM
+    var, arr, val, chr, reg, nop, inc, call, callext,
+    StmtM, Stmt, Mode(..)
 ) where
 
 import Control.Monad.Writer
@@ -15,6 +15,7 @@ import MipsGen.MipsGen hiding ((?=))
 import Data.Char (ord)
 
 type StmtM = Writer [Stmt] ()
+
 
 var :: String -> Expr
 var s = Var s (Val 0)
@@ -27,6 +28,7 @@ reg = Reg
 nop = NOP
 inc = Inc
 call = Call
+callext = CallExt
 
 newtype Arr = Arr String
 arr = Arr

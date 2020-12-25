@@ -1,7 +1,7 @@
 	addi $fp, $zero, 268697596
 	addi $sp, $zero, 268697596
 	j main
-proc0:
+fact:
 	addi $sp, $sp, 4
 	sw $ra, ($sp)
 	addi $sp, $sp, 4
@@ -14,7 +14,7 @@ proc0:
 	nor $t0, $t1, $t2
 	sll $t0, $t0, 31
 	srl $t0, $t0, 31
-	blez $t0 false_label1
+	blez $t0 false_label0
 	nop
 	addi $t0, $zero, 1
 	addu $v0, $zero, $t0
@@ -24,15 +24,15 @@ proc0:
 	lw $ra, ($sp)
 	addi $sp, $sp, -4
 	jr $ra
-	j done_label1
+	j done_label0
 	nop
-false_label1:
+false_label0:
 	addi $sp, $sp, 4
 	lw $t0, -8($fp)
 	addiu $t0, $t0, -1
 	addi $sp, $sp, 4
 	sw $t0, ($sp)
-	jal proc0
+	jal fact
 	addu $t0, $zero, $v0
 	addu $t5, $zero, $t0
 	sw $t5, 4($fp)
@@ -48,8 +48,8 @@ false_label1:
 	lw $ra, ($sp)
 	addi $sp, $sp, -4
 	jr $ra
-done_label1:
-proc2:
+done_label0:
+add:
 	addi $sp, $sp, 4
 	sw $ra, ($sp)
 	addi $sp, $sp, 4
@@ -68,7 +68,7 @@ main:
 	addi $t0, $zero, 10
 	addi $sp, $sp, 4
 	sw $t0, ($sp)
-	jal proc0
+	jal fact
 	addu $t0, $zero, $v0
 	addu $t5, $zero, $t0
 	sw $t5, 4($fp)
@@ -84,7 +84,7 @@ main:
 	lw $t0, 8($fp)
 	addi $sp, $sp, 4
 	sw $t0, ($sp)
-	jal proc2
+	jal add
 	addu $t0, $zero, $v0
 	addu $t5, $zero, $t0
 	sw $t5, 4($fp)
