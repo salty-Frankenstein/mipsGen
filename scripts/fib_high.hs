@@ -2,7 +2,7 @@ import MipsGen.Monadic
 
 main :: IO ()
 main = do
-  writeFile "./fib_high.asm" $ runCompile $ 
+  writeFile ".\\scripts\\fib_high.asm" $ runCompile $ 
     mDO $ do
         mDEF "n"
         var "n" ?= val 100

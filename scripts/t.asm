@@ -1,7 +1,14 @@
+addi $t0, $zero, 0x10010000
+addi $t1, $zero, 0xa
+sb $t1, 2($t0)
+
 j main
 f1:
 addu $t0, $t1, $t2
-jr $ra
+addu $t0, $zero, $ra
+addi $ra, $zero, 1
+addu $ra, $zero, $t0
+jr $t0
 
 
 main:

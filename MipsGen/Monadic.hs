@@ -2,10 +2,11 @@
 module MipsGen.Monadic (
     runCompile,
     mDEF, mARR, mWHILE, mIF, mFOR, mFORR, mDO, (?!), (?=), mINC, mNOP, 
+    mPROC, mRET, mMACRO,
     (^=),  --non monadic version
-    _if, _while, --non monadic version
+    _if, _while, _return,--non monadic version
     (?<), (?<=), (?==), (?!=), (?&&), (?+), (?-), (?*),
-    var, arr, val, chr, reg, nop, inc,
+    var, arr, val, chr, reg, nop, inc, call,
     StmtM
 ) where
 
@@ -25,6 +26,7 @@ val = Val
 reg = Reg
 nop = NOP
 inc = Inc
+call = Call
 
 newtype Arr = Arr String
 arr = Arr
@@ -49,6 +51,8 @@ infixr 0 ^=
 (^=) :: Expr -> Expr -> Stmt
 (^=) = Assign
 
+mMACRO :: String -> StmtM
+mMACRO s = tell [MACRO s]
 
 mINC :: Expr -> StmtM
 mINC e = tell [Inc e]
@@ -71,5 +75,13 @@ mNOP = tell [NOP]
 mDO :: StmtM -> Stmt
 mDO stmt = Block $ snd $ runWriter stmt
 
+mPROC :: Symbol -> [Symbol] -> Stmt -> StmtM
+mPROC n p b = tell [Proc n p b]
+
+mRET :: Expr -> StmtM
+mRET e = tell [Return e]
+
 _if = IF
 _while = While
+
+_return = Return 

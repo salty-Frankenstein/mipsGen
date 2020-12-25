@@ -4,11 +4,12 @@ import Control.Monad.State
 
 debug = True
 
-stAddr = if debug then 0x10040000 else 0
+stAddr = if debug then 0x10040000 else 0x30000
 
-baseReg = "t9" -- register for heap base address
 stackReg = "sp"
 frameReg = "fp"
+retValReg = "v0"
+retAddrReg = "ra"
 
 evalTmpReg = "t0"
 tmpReg2 = "t5"
@@ -19,13 +20,16 @@ addrTmpReg = "t3"
 cmpReg1 = "t1"
 cmpReg2 = "t2"
 cmpReg3 = "t4"
-initCode = "\taddi $" ++ baseReg ++ ", $zero, " ++ show stAddr ++ "\n"
+{- initialize stack -}
+initCode = "\taddi $" ++ frameReg ++ ", $zero, " ++ show (stAddr-4) ++ "\n"
+  ++ "\taddi $" ++ stackReg ++ ", $zero, " ++ show (stAddr-4) ++ "\n"
+  ++ "\tj main\n"
 
 data Expr
   = Val Int
   | Reg String
   | Var Symbol Expr -- a variable or an array with index
-  | Call Symbol     -- call a procedure
+  | Call Symbol [Expr]    -- call a procedure, with args epressions
   | Lt Expr Expr    -- less than
   | Le Expr Expr    -- less or equal
   | Equal Expr Expr
@@ -41,6 +45,7 @@ data Stmt
   = MACRO String
   | Define Symbol Size -- define a variable, or an Array, with a data size
   | Proc Symbol [Symbol] Stmt -- define a procedure
+  | Return Expr   -- return the result of expr
   | Assign Expr Expr
   | Inc Expr
   | IF Expr Stmt Stmt
@@ -59,7 +64,7 @@ type Code = String  -- the code generated
 {- the environment of compiling progress -}
 data Env = Env {
   symList :: [(Symbol, (Addr, Size))],  -- symbol list for variables and arrays
-  funcList :: [(Symbol, String)]        -- function name list
+  funcList :: [(Symbol, (String, Int))] -- function name list, for function label and arg number
 } 
 
 {- the compiler state -}
@@ -72,20 +77,51 @@ type CompileM = State CompileSt
 incLabel :: CompileM ()
 incLabel = state $ \(ComST e l h c) -> ((), ComST e (l + 1) h c)
 
+{-
+    stack frame for proc call:
+       old fp ->     -------------
+     (fp+arg_offset) |arg n to 1 |
+     (fp-4)          |ret        |
+           fp ->     |old fp     |
+     (fp+var_offset) |auto vars  |
+           sp ->     |...        |
+    
+    look up address for a symbol: fp+offset
+-}
+
+-- define the procedure parameter, 
+-- adding a list symbol name and the negative address offset of the parameter into the environment
+-- in a reversed order
+-- and do nothing for the offset of auto variables
+defineParameter :: [Symbol] -> CompileM ()
+defineParameter p = defineParameter' p (-8) -- the last parameter start at fp-8
+  where 
+    defineParameter' [] _ = return ()
+    defineParameter' (x:xs) offset = 
+      do
+        (Env s f) <- getEnv
+        case lookup x s of
+          Nothing -> putEnv (Env ((x, (offset, 1)) : s) f)
+          Just _ -> error $ "redefinition of parameter symbol: " ++ x
+        defineParameter' xs (offset-4)
+
 -- add a new variable to an environment
 newVariable :: Symbol -> Size -> CompileM ()
 newVariable v size = do
   (ComST (Env s f) l h c) <- get
   case lookup v s of
-    Nothing -> put $ ComST (Env ((v, (h, size)) : s) f) l (h + 4 * size) c
+    Nothing -> do
+      put $ ComST (Env ((v, (h, size)) : s) f) l (h + 4 * size) c
+      appendCode $ "\taddi $" ++ stackReg ++ ", $" ++ stackReg ++ ", " ++ show (4*size) ++ "\n"
     Just _ -> error $ "redefinition of symbol: " ++ v
 
-newProcedure :: Symbol -> CompileM String
-newProcedure p = do
+-- define a proc with name and number of args
+newProcedure :: Symbol -> Int -> CompileM String
+newProcedure p n = do
   (ComST (Env s f) l h c) <- get
   let procL = "proc" ++ show l
   case lookup p f of
-    Nothing -> put $ ComST (Env s $ (p, procL) : f) (l + 1) h c
+    Nothing -> put $ ComST (Env s $ (p, (procL, n)) : f) (l + 1) h c
     Just _ -> error $ "redefinition of procedure: " ++ p
   return procL    -- return the label generated
 
@@ -106,7 +142,7 @@ env0 :: Env
 env0 = Env [] []
 
 compileSt0 :: CompileSt
-compileSt0 = ComST env0 0 0 ""
+compileSt0 = ComST env0 0 4 ""
 
 (?=) :: Expr -> Expr -> Stmt
 (?=) = Assign
@@ -139,6 +175,16 @@ infixl 7 ?*
 (?-) = Sub
 (?*) = Mul
 
+{- stack operations -}
+pushReg :: String -> String
+pushReg reg = "\taddi $" ++ stackReg ++ ", $" ++ stackReg ++ ", 4\n"
+  ++"\tsw $" ++ reg ++ ", ($" ++ stackReg ++ ")\n"
+
+popReg :: String -> String
+popReg reg = "\tlw $" ++ reg ++ ", ($" ++ stackReg ++ ")\n"
+  ++ "\taddi $" ++ stackReg ++ ", $" ++ stackReg ++ ", -4\n"
+
+
 -- evaluate the expression in an environment
 -- the result should be loaded to $t0
 eval :: Env -> Expr -> String
@@ -153,12 +199,12 @@ eval env (Var v idx) =
       case idx of
         Val i ->
           if i < size then
-            "\tlw $" ++ evalTmpReg ++ ", " ++ show (addr + 4*i) ++ "($" ++ baseReg ++ ")\n"
+            "\tlw $" ++ evalTmpReg ++ ", " ++ show (addr + 4*i) ++ "($" ++ frameReg ++ ")\n"
           else error $ "Array index out of range: " ++ v  -- this case is for arrays
         var ->  -- it can be any expr
           let evalIdx = eval env var  -- eval index to tmp
               mul4 = "\tsll $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 2\n"  -- TODO
-              addToBase = eval env (Reg evalTmpReg ?+ Reg baseReg) in -- tmp = tmp + base
+              addToBase = eval env (Reg evalTmpReg ?+ Reg frameReg) in -- tmp = tmp + base
             evalIdx ++ mul4 ++ addToBase 
             ++ "\tlw $" ++ evalTmpReg ++ ", " ++ show addr ++ "($" ++ evalTmpReg ++ ")\n"
         -- _ -> error "TODO"
@@ -319,6 +365,22 @@ eval env (Mul e1 e2)=
   ++ "\taddu $" ++ rightReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
   ++ eval env (Reg leftReg ?* Reg rightReg)
 
+{- call expr -}
+eval env@(Env s f) (Call name args) = 
+  case lookup name f of
+    Nothing -> error $ "Undefined procedure: " ++ name
+    Just (l, n) -> 
+      if n /= length args then error $ "Can match arg number: " ++ name
+      else pushArgs (reverse args)
+      ++ "\tjal " ++ l ++ "\n"  -- jump to function
+      ++ "\taddu $" ++ evalTmpReg ++ ", $zero, $" ++ retValReg ++ "\n"  -- assign return value
+  where
+    pushArgs :: [Expr] -> String
+    pushArgs [] = ""
+    pushArgs (x:xs) = 
+      eval env x
+      ++ pushReg evalTmpReg
+      ++ pushArgs xs
 
 {- errors -}
 eval _ (Xor _ _) = error "Unknown expression pattern: xor"
@@ -356,13 +418,13 @@ compile (Assign (Var v idx) (Reg r)) =
         case idx of
           Val i ->
             if i < size then appendCode $ 
-              "\tsw $" ++ r ++ ", " ++ show (addr + 4*i) ++ "($" ++ baseReg ++ ")\n"
+              "\tsw $" ++ r ++ ", " ++ show (addr + 4*i) ++ "($" ++ frameReg ++ ")\n"
             else error $ "Array index out of range: " ++ v  -- this case is for arrays
           var@Var{} -> do
             appendCode $ eval env var 
             appendCode $ "\tsll $" ++ evalTmpReg ++ ", $" ++ evalTmpReg ++ ", 2\n"  -- TODO
             compile (Reg addrTmpReg ?= Reg evalTmpReg)
-            appendCode $ eval env (Reg addrTmpReg ?+ Reg baseReg)
+            appendCode $ eval env (Reg addrTmpReg ?+ Reg frameReg)
             appendCode $ "\tsw $" ++ r ++ ", " ++ show addr ++ "($" ++ evalTmpReg ++ ")\n"
           _ -> error "TODO"
 
@@ -465,16 +527,33 @@ compile (For begin cond update body) =
     compile NOP --
     appendCode $ doneL ++ ":\n"
 
+{- define a procedure -}
 compile (Proc name para body) = 
   do
-    oldEnv@(Env _ oldf) <- getEnv 
-    procL <- newProcedure name   -- define the procedure
+    procL <- newProcedure name (length para)   -- define the procedure
+    ComST (Env olds oldf) _ olda _ <- get
     appendCode $ procL ++ ":\n"
-    putEnv (Env [] oldf)     -- set a new frame
-    compile $ Block $ map (`Define` 0) para   -- define parameters
-    compile body
+
+    appendCode $ pushReg retAddrReg   -- push return address
+    appendCode $ pushReg frameReg     -- push old fp
+    compile (Reg frameReg ?= Reg stackReg)  -- create a new frame
+
+    putEnv (Env [] oldf)     -- set a new frame, with new variable table and offset 
+    defineParameter para     -- define the parameters' address
+
+    compile body -- the return prosess shall be included the body stmt
+    -- recover the original env
+    state $ \(ComST (Env _ newf) l a c) -> ((), ComST (Env olds newf) l olda c)  
+
+compile (Return e) =
+  do
+    env <- getEnv
+    appendCode $ eval env e   -- eval the expression
+    compile (Reg retValReg ?= Reg evalTmpReg) -- assign to the return value
+    compile (Reg stackReg ?= Reg frameReg)  -- recover the frame
+    appendCode $ popReg frameReg    -- pop out the old fp
+    appendCode $ popReg retAddrReg  -- pop out the return address
     appendCode "\tjr $ra\n" -- return
-    putEnv oldEnv   -- set the original env
 
 compile (Block []) = return () -- do nothing
 compile (Block (x : xs)) =

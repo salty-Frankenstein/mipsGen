@@ -2,7 +2,7 @@ import MipsGen.Monadic
 
 main :: IO ()
 main = do
-  writeFile "./fib.asm" $ runCompile $ 
+  writeFile ".\\scripts\\fib.asm" $ runCompile $ 
     mDO $ do
       mARR "fibs" 20                            -- define an array
       arr "fibs" ?! val 0 ?= val 0              -- fibs[0] = 0
