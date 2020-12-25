@@ -52,3 +52,47 @@ stringCmp = do
         strptr2 ?= strptr2 ?+ val 4
       )
     mRET $ val 1  -- return true
+
+-- softDiv :: StmtM 
+-- softDiv = do
+--   mPROC "div" ["a", "b"] $ mDO $ do
+--     mDEF "cnt"
+--     let a = var "a"; b = var "b"; cnt = var "cnt"
+--     cnt ?= val 0
+--     mWHILE(val 0 ?< a) $ mDO $ do
+
+-- return the length of the result string
+numToStr :: StmtM 
+numToStr = do
+  mPROC "numToStr" ["strptr", "n"] $ mDO $ do
+    let strp = var "strptr"; n = var "n"
+    mIF(n ?== val 0)
+      (mDO $ do
+        strp ?<- chr '0'
+        mRET $ val 1
+      )
+      (mDO $ do
+        mARR "tmp" 15
+        mDEF "cnt" >> mDEF "d" >> mDEF "m" >> mDEF "n'"
+        let tmp = arr "tmp"; cnt = var "cnt"
+            d = var "d"; m = var "m"; n' = var "n'"
+        cnt ?= val 0
+        mWHILE(val 0 ?< n) $ mDO $ do
+          d ?= n ?/ val 10        -- div
+          n' ?= d ?* val 10
+          m ?= n ?- n'   -- mod
+          tmp ?! cnt ?= m ?+ chr '0'         -- save to tmp[cnt]
+          mINC cnt
+          n ?= d
+        
+        cnt ?= cnt ?- val 1
+        mDEF "ret"
+        var "ret" ?= cnt
+        mWHILE(val 0 ?<= cnt) $ mDO $ do
+          strp ?<- tmp ?! cnt
+          strp ?= strp ?+ val 4
+          cnt ?= cnt ?- val 1
+        mRET $ var "ret"
+      )
+
+-- sReadNum ::

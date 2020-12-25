@@ -1,6 +1,7 @@
 import MipsGen.Monadic
 import Main.Fact
 import Main.String
+import Main.IO
 import Data.Char ( ord ) 
 
 includes :: IO String
@@ -13,7 +14,9 @@ definitions :: StmtM
 definitions = do
   fact
   stringLen
-  stringCmp 
+  stringCmp
+  numToStr  
+  includeIO
 
 mainLoop :: Stmt
 mainLoop = 
@@ -21,17 +24,21 @@ mainLoop =
     definitions
 
     mMACRO "main:\n"
-
+    mARR "str" 20
     mDEF "res"
-    
-    mARR "str1" 20
-    mARR "str2" 20
-    stringInit "str1" "abcde"
-    stringInit "str2" "abdde"
 
-    var "res" ?= call "stringCmp" [ref $ var "str1", ref $ var "str2"]
+    var "res" ?= call "numToStr" [ref $ var "str", val 0]
+    -- mDEF "res"
+    
+    -- mARR "str1" 20
+    -- mARR "str2" 20
+    -- stringInit "str1" "abcde"
+    -- stringInit "str2" "abdde"
+
+    -- var "res" ?= call "stringCmp" [ref $ var "str1", ref $ var "str2"]
 
     mWHILE(val 1) $ mDO $ do  -- main loop
+
       mNOP
 
 main :: IO ()

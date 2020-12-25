@@ -47,6 +47,7 @@ data Expr
   | Add Expr Expr
   | Sub Expr Expr
   | Mul Expr Expr
+  | Div Expr Expr
 
 
 data Stmt
@@ -55,6 +56,7 @@ data Stmt
   | Proc Symbol [Symbol] Stmt -- define a procedure
   | Return Expr   -- return the result of expr
   | Assign Expr Expr
+  | Write Expr Expr   -- write a value into an address
   | Inc Expr
   | IF Expr Stmt Stmt
   | While Expr Stmt   -- while loop
@@ -153,6 +155,9 @@ compileSt0 = ComST env0 0 4 ""
 (?=) :: Expr -> Expr -> Stmt
 (?=) = Assign
 
+(?<-) :: Expr -> Expr -> Stmt
+(?<-) = Write
+
 infixr 4 ?<
 (?<) :: Expr -> Expr -> Expr
 (?<) = Lt
@@ -176,10 +181,12 @@ infixr 3 ?&&
 infixl 6 ?+
 infixl 6 ?-
 infixl 7 ?*
-(?+), (?-), (?*) :: Expr -> Expr -> Expr
+infixl 7 ?/
+(?+), (?-), (?*), (?/) :: Expr -> Expr -> Expr
 (?+) = Add
 (?-) = Sub
 (?*) = Mul
+(?/) = Div
 
 {- stack operations -}
 pushReg :: String -> String
@@ -382,6 +389,17 @@ eval env (Mul e1 e2)=
   ++ "\taddu $" ++ rightReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
   ++ eval env (Reg leftReg ?* Reg rightReg)
 
+{- div -}
+eval _ (Div (Reg a) (Reg b)) =
+  "\tdivu $" ++ evalTmpReg ++ ", $" ++ a ++ ", $" ++ b ++ "\n"
+{- otherwise -}
+eval env (Div e1 e2)= 
+  eval env e1 
+  ++ "\taddu $" ++ leftReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env e2
+  ++ "\taddu $" ++ rightReg ++ ", $zero, $" ++ evalTmpReg ++ "\n" 
+  ++ eval env (Reg leftReg ?/ Reg rightReg)
+
 {- call expr -}
 eval env@(Env s f) (Call name args) = 
   case lookup name f of
@@ -473,6 +491,15 @@ compile (Assign v@Var{} e) =
     -- use another temp reg since $t0 will be flushed while evaluating
     compile (Reg tmpReg2 ?= Reg evalTmpReg) 
     compile (v ?= Reg tmpReg2)
+
+{- write into address -}
+compile (Write e1 e2) =
+  do
+    env <- getEnv
+    appendCode $ eval env e1
+    compile (Reg tmpReg2 ?= Reg evalTmpReg) 
+    appendCode $ eval env e2
+    appendCode $ "\tsw $" ++ evalTmpReg ++ ", ($" ++ tmpReg2 ++ ")\n"
 
 compile (Inc (Reg s)) =
   appendCode $ "\taddi $" ++ s ++ ", $" ++ s ++ ", 1" ++ "\n"

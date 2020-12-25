@@ -1,17 +1,17 @@
 {- for monadic syntax -}
 module MipsGen.Monadic (
     runCompile,
-    mDEF, mARR, mWHILE, mIF, mFOR, mFORR, mDO, (?!), (?=), mINC, mNOP, 
+    mDEF, mARR, mWHILE, mIF, mFOR, mFORR, mDO, (?!), (?=), (?<-), mINC, mNOP, 
     mPROC, mRET, mMACRO,
     (^=),  --non monadic version
     _if, _while, _return,--non monadic version
-    (?<), (?<=), (?==), (?!=), (?&&), (?+), (?-), (?*),
+    (?<), (?<=), (?==), (?!=), (?&&), (?+), (?-), (?*), (?/),
     var, arr, val, chr, reg, nop, inc, call, callext, deref, ref,
     StmtM, Stmt, Mode(..)
 ) where
 
 import Control.Monad.Writer
-import MipsGen.MipsGen hiding ((?=))
+import MipsGen.MipsGen hiding ((?=), (?<-))
 import Data.Char (ord)
 
 type StmtM = Writer [Stmt] ()
@@ -50,6 +50,10 @@ infixl 9 ?!
 infixr 0 ?=
 (?=) :: Expr -> Expr -> StmtM
 (?=) e1 e2 = tell [Assign e1 e2]
+
+infixr 0 ?<-
+(?<-) :: Expr -> Expr -> StmtM
+(?<-) e1 e2 = tell [Write e1 e2]
 
 infixr 0 ^=
 (^=) :: Expr -> Expr -> Stmt
