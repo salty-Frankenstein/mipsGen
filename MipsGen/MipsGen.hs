@@ -2,7 +2,7 @@ module MipsGen.MipsGen where
 
 import Control.Monad.State
 
-debug = True
+debug = False
 
 stAddr = if debug then 0x10040000 else 0x30000
 

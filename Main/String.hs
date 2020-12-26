@@ -3,11 +3,11 @@ module Main.String where
 import MipsGen.Monadic
 import Data.Char (ord)
 
-{- initialize a string with name -}
-stringInit :: String -> String -> StmtM
-stringInit name s = do
+{- initialize a wstring with name -}
+wstrInit :: String -> String -> StmtM
+wstrInit name s = do
   let
-      input = s
+      input = s ++ "\0"
       strInt = map ord input
       valList = map val strInt
       varList = map (\i -> arr name ?! val i) [0..]
@@ -60,6 +60,47 @@ stringCmp = do
 --     let a = var "a"; b = var "b"; cnt = var "cnt"
 --     cnt ?= val 0
 --     mWHILE(val 0 ?< a) $ mDO $ do
+
+-- string to wstring
+toWSTR :: StmtM 
+toWSTR = do
+  mPROC "toWSTR" ["strptr", "resptr"] $ mDO $ do
+    let strp = var "strptr"; resp = var "resptr"
+    mDEF "ch"
+    reg "t0" ?= strp
+    mMACRO "\tlb $s0, ($t0)\n"
+    var "ch" ?= reg "s0"
+    mWHILE(var "ch" ?!= chr '\0') $ mDO $ do
+      resp ?<- var "ch"
+
+      resp ?= resp ?+ val 4
+      strp ?= strp ?+ val 1
+      reg "t0" ?= strp
+      mMACRO "\tlb $s0, ($t0)\n"
+      var "ch" ?= reg "s0"
+    resp ?<- chr '\0'
+    mRET $ val 0
+
+-- wstring to string
+toSTR :: StmtM 
+toSTR = do
+  mPROC "toSTR" ["strptr", "resptr"] $ mDO $ do
+    let strp = var "strptr"; resp = var "resptr"
+        sc = deref strp 
+    mWHILE(sc ?!= chr '\0') $ mDO $ do
+      mDEF "t"
+      var "t" ?= sc
+      reg "s0" ?= var "t"
+      reg "t0" ?= resp
+      mMACRO "\tsb $s0, ($t0)\n"
+      resp ?= resp ?+ val 1
+      strp ?= strp ?+ val 4
+    
+    reg "s0" ?= chr '\0'    -- end
+    reg "t0" ?= resp
+    mMACRO "\tsb $s0, ($t0)\n"
+
+    mRET $ val 0
 
 -- return the length of the result string
 numToStr :: StmtM 
