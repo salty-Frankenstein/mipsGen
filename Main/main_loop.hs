@@ -12,54 +12,59 @@ includes = do
 
 definitions :: StmtM
 definitions = do
-  -- fact
+  fact
   stringLen
   stringCmp
-  -- numToStr  
+  numToStr  
+  sReadNum
   toSTR
   toWSTR
   includeSys
 
-{- declear the static strings -}
+{- declear the static strings, 
+  the data will be ready after booting -}
 staticStr :: StmtM 
 staticStr = do
-  return ()
+  mARR "CMD:hello" 7      -- "hello"L
+  mARR "STR:hello" 5      -- "Hello, world!"
+  mARR "STR:invalid" 5    -- "Invalid Command!"
+  mARR "CMD:fact" 6       -- "fact"L
+
 
 mainLoop :: Stmt
 mainLoop = 
   mDO $ do
     definitions
-
     mMACRO "main:\n"
+    staticStr
+    -- wstrInit "CMD:hello" "hello"
     -- mARR "str" 20
     mDEF "res"
     let res = var "res"
-    mARR "CMD:hello" 6
-    wstrInit "CMD:hello" "hello"
-    mARR "WSTR:hello" 15
-    wstrInit "WSTR:hello" "Hello, world!"
-    mARR "STR:hello" 4
-    res ?= call "toSTR" [ref $ var "WSTR:hello", ref $ var "STR:hello"]
-    mARR "WSTR:invalid" 20
-    wstrInit "WSTR:invalid" "Invalid Command!"
-    mARR "STR:invalid" 5
-    res ?= call "toSTR" [ref $ var "WSTR:invalid", ref $ var "STR:invalid"]
 
     -- var "res" ?= call "numToStr" [ref $ var "str", val 0]
     -- mDEF "res"
-    --mARR "str1" 20
-    --mARR "str2" 20
-
-    -- stringInit "str1" "abcdefghijk"
-    -- stringInit "str2" "abdde"
-    -- var "res" ?= call "toSTR" [ref $ var "str1", ref $ var "str2"]
+    mARR "str1" 20
+    mARR "str2" 20
     mDEF "sptr"
+    
+    -- res ?= call "toSTR" [ref $ var "CMD:hello", ref $ var "str2"]
 
     -- var "sptr" ?= ref $ var "str2"
     -- reg "a0" ?= var "sptr"
     -- mMACRO "\tjal putsl\n"
 
+    -- res ?= call "numToStr" [ref $ var "str1", val 114514]
     
+    -- res ?= call "toSTR" [ref $ var "str1", ref $ var "str2"]
+
+    -- var "sptr" ?= ref $ var "str2"
+    -- reg "a0" ?= var "sptr"
+    -- mMACRO "\tjal putsl\n"
+
+    wstrInit "str1" "114514"
+    res ?= call "sReadNum" [ref $ var "str1"]
+
     -- var "res" ?= call "stringCmp" [ref $ var "str1", ref $ var "str2"]
     mWHILE(val 1) $ mDO $ do  -- main loop
       mMACRO "\tjal prompt\n"
@@ -82,10 +87,28 @@ mainLoop =
           reg "a0" ?= var "sptr"
           mMACRO "\tjal putsl\n"
         )
-        (mDO $ do
-          var "sptr" ?= ref $ var "STR:invalid"
-          reg "a0" ?= var "sptr"
-          mMACRO "\tjal putsl\n"
+        (_if(call "stringCmp" [ref $ var "wcmd", ref $ var "CMD:fact"])
+          (mDO $ do
+            {- read a number -}
+            var "sptr" ?= ref $ var "cmd" 
+            reg "a0" ?= var "sptr"
+            reg "a1" ?= val 63
+            mMACRO "\tjal readstr\n"
+            res ?= call "toWSTR" [ref $ var "cmd", ref $ var "wcmd"]
+            res ?= call "sReadNum" [ref $ var "wcmd"]
+            res ?= call "fact" [res]
+            res ?= call "numToStr" [ref $ var "wcmd", res]
+            res ?= call "toSTR" [ref $ var "wcmd", ref $ var "cmd"]
+            {- print res -}
+            var "sptr" ?= ref $ var "cmd"
+            reg "a0" ?= var "sptr"
+            mMACRO "\tjal putsl\n"
+          )
+          (mDO $ do
+            var "sptr" ?= ref $ var "STR:invalid"
+            reg "a0" ?= var "sptr"
+            mMACRO "\tjal putsl\n"
+          )
         )
       
 

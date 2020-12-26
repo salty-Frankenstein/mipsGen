@@ -380,7 +380,9 @@ eval env (Sub e1 e2)=
 
 {- mul -}
 eval _ (Mul (Reg a) (Reg b)) = 
-  "\tmul $" ++ evalTmpReg ++ ", $" ++ a ++ ", $" ++ b ++ "\n"
+  "\tmult $" ++ a ++ ", $" ++ b ++ "\n"
+  ++ "\tmflo $" ++ evalTmpReg ++ "\n"
+
 {- otherwise -}
 eval env (Mul e1 e2)= 
   eval env e1 

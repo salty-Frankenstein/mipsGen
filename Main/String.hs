@@ -133,7 +133,29 @@ numToStr = do
           strp ?<- tmp ?! cnt
           strp ?= strp ?+ val 4
           cnt ?= cnt ?- val 1
+        strp ?<- chr '\0'
         mRET $ var "ret"
       )
 
--- sReadNum ::
+sReadNum :: StmtM 
+sReadNum = do
+  mPROC "sReadNum" ["strptr"] $ mDO $ do
+    mDEF "i" >> mDEF "ret"
+    let i = var "i"; ret = var "ret"
+    charConst
+    let chr0 = var "chr0"; chr9 = var "chr9" 
+
+    ret ?= val 0
+    mDEF "c" >> mDEF "t"
+    var "c" ?= deref $ var "strptr"
+    mWHILE (var "c" ?!= chr '\0') $ mDO $ do
+      mIF(chr0 ?< var "c" ?&& var "c" ?<= chr9)
+        (mDO $ do
+          var "t" ?= var "c" ?- chr '0'
+          ret ?= ret ?* val 10
+          ret ?= ret ?+ var "t"
+        )
+        nop
+      var "strptr" ?= var "strptr" ?+ val 4
+      var "c" ?= deref $ var "strptr"
+    mRET ret
