@@ -149,7 +149,7 @@ sReadNum = do
     mDEF "c" >> mDEF "t"
     var "c" ?= deref $ var "strptr"
     mWHILE (var "c" ?!= chr '\0') $ mDO $ do
-      mIF(chr0 ?< var "c" ?&& var "c" ?<= chr9)
+      mIF(chr0 ?<= var "c" ?&& var "c" ?<= chr9)
         (mDO $ do
           var "t" ?= var "c" ?- chr '0'
           ret ?= ret ?* val 10

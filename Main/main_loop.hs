@@ -1,5 +1,7 @@
 import MipsGen.Monadic
 import Main.Fact
+import Main.Fib
+import Main.Expr
 import Main.String
 import Main.System
 import Data.Char ( ord ) 
@@ -12,7 +14,9 @@ includes = do
 
 definitions :: StmtM
 definitions = do
+  fib
   fact
+  evalExpr
   stringLen
   stringCmp
   numToStr  
@@ -29,6 +33,7 @@ staticStr = do
   mARR "STR:hello" 5      -- "Hello, world!"
   mARR "STR:invalid" 5    -- "Invalid Command!"
   mARR "CMD:fact" 6       -- "fact"L
+  mARR "CMD:fib" 4        -- "fib"L
 
 
 mainLoop :: Stmt
@@ -38,14 +43,11 @@ mainLoop =
     mMACRO "main:\n"
     staticStr
     -- wstrInit "CMD:hello" "hello"
-    -- mARR "str" 20
     mDEF "res"
     let res = var "res"
 
-    -- var "res" ?= call "numToStr" [ref $ var "str", val 0]
-    -- mDEF "res"
-    mARR "str1" 20
-    mARR "str2" 20
+    mARR "str1" 40
+    mARR "str2" 40
     mDEF "sptr"
     
     -- res ?= call "toSTR" [ref $ var "CMD:hello", ref $ var "str2"]
@@ -55,17 +57,21 @@ mainLoop =
     -- mMACRO "\tjal putsl\n"
 
     -- res ?= call "numToStr" [ref $ var "str1", val 114514]
-    
-    -- res ?= call "toSTR" [ref $ var "str1", ref $ var "str2"]
 
-    -- var "sptr" ?= ref $ var "str2"
-    -- reg "a0" ?= var "sptr"
-    -- mMACRO "\tjal putsl\n"
+    wstrInit "str1" "(9+6*6)*3"
 
-    wstrInit "str1" "114514"
-    res ?= call "sReadNum" [ref $ var "str1"]
+    res ?= call "evalExpr" [ref $ var "str1"]
 
-    -- var "res" ?= call "stringCmp" [ref $ var "str1", ref $ var "str2"]
+    reg "t0" ?= val 1
+    mMACRO "\tsw $t0, ($t0)\n"  -- breakpoint
+    {- print fib(100) -}
+    res ?= call "fib" [val 100, ref $ var "str1"]
+    res ?= call "toSTR" [ref $ var "str1", ref $ var "str2"]
+    var "sptr" ?= ref $ var "str2"
+    reg "a0" ?= var "sptr"
+    mMACRO "\tjal putsl\n"
+    -- mWHILE(val 1) nop
+
     mWHILE(val 1) $ mDO $ do  -- main loop
       mMACRO "\tjal prompt\n"
       reg "a0" ?= val 10000

@@ -50,7 +50,7 @@ main = do
       post_ed ?= val 0
 
       mFOR(i ^= val 0, expr ?! i ?!= chr '\0', inc i) $ mDO $ do
-        mIF(chr0 ?< expr ?! i ?&& expr ?! i ?<= chr9)
+        mIF(chr0 ?<= expr ?! i ?&& expr ?! i ?<= chr9)
           (mDO $ do -- then
             post ?! post_ed ?= expr ?! i
             mINC post_ed)
@@ -102,7 +102,7 @@ main = do
       num_ed ?= val 0
 
       mFOR(i ^= val 0, i ?< post_ed, inc i)
-        (_if(chr0 ?< post ?! i ?&& post ?! i ?<= chr9)
+        (_if(chr0 ?<= post ?! i ?&& post ?! i ?<= chr9)
           (mDO $ do
             num_stack ?! num_ed ?= post ?! i ?- chr '0'
             mINC num_ed
