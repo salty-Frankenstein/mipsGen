@@ -53,14 +53,6 @@ stringCmp = do
       )
     mRET $ val 1  -- return true
 
--- softDiv :: StmtM 
--- softDiv = do
---   mPROC "div" ["a", "b"] $ mDO $ do
---     mDEF "cnt"
---     let a = var "a"; b = var "b"; cnt = var "cnt"
---     cnt ?= val 0
---     mWHILE(val 0 ?< a) $ mDO $ do
-
 -- string to wstring
 toWSTR :: StmtM 
 toWSTR = do
@@ -110,6 +102,8 @@ numToStr = do
     mIF(n ?== val 0)
       (mDO $ do
         strp ?<- chr '0'
+        strp ?= strp ?+ val 4
+        strp ?<- chr '\0'
         mRET $ val 1
       )
       (mDO $ do

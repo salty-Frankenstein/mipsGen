@@ -1,3 +1,7 @@
+addi $t1, $zero, -1
+addi $t2, $zero, 10
+mult $t1, $t2
+
 addi $t0, $zero, 0x10010000
 addi $t1, $zero, 0xa
 sb $t1, 2($t0)
