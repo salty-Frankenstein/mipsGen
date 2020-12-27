@@ -34,6 +34,7 @@ staticStr = do
   mARR "STR:invalid" 5    -- "Invalid Command!"
   mARR "CMD:fact" 6       -- "fact"L
   mARR "CMD:fib" 4        -- "fib"L
+  mARR "CMD:eval" 6       -- "eval"L
 
 
 mainLoop :: Stmt
@@ -58,19 +59,8 @@ mainLoop =
 
     -- res ?= call "numToStr" [ref $ var "str1", val 114514]
 
-    wstrInit "str1" "(9+6*6)*3"
-
-    res ?= call "evalExpr" [ref $ var "str1"]
-
-    reg "t0" ?= val 1
-    mMACRO "\tsw $t0, ($t0)\n"  -- breakpoint
-    {- print fib(100) -}
-    res ?= call "fib" [val 100, ref $ var "str1"]
-    res ?= call "toSTR" [ref $ var "str1", ref $ var "str2"]
-    var "sptr" ?= ref $ var "str2"
-    reg "a0" ?= var "sptr"
-    mMACRO "\tjal putsl\n"
-    -- mWHILE(val 1) nop
+    mARR "fib_resW" 120
+    mARR "fib_resS" 30
 
     mWHILE(val 1) $ mDO $ do  -- main loop
       mMACRO "\tjal prompt\n"
@@ -102,6 +92,7 @@ mainLoop =
             mMACRO "\tjal readstr\n"
             res ?= call "toWSTR" [ref $ var "cmd", ref $ var "wcmd"]
             res ?= call "sReadNum" [ref $ var "wcmd"]
+            {- eval fact -}
             res ?= call "fact" [res]
             res ?= call "numToStr" [ref $ var "wcmd", res]
             res ?= call "toSTR" [ref $ var "wcmd", ref $ var "cmd"]
@@ -110,10 +101,45 @@ mainLoop =
             reg "a0" ?= var "sptr"
             mMACRO "\tjal putsl\n"
           )
-          (mDO $ do
-            var "sptr" ?= ref $ var "STR:invalid"
-            reg "a0" ?= var "sptr"
-            mMACRO "\tjal putsl\n"
+          (_if(call "stringCmp" [ref $ var "wcmd", ref $ var "CMD:fib"])
+            (mDO $ do
+              {- read a number -}
+              var "sptr" ?= ref $ var "cmd" 
+              reg "a0" ?= var "sptr"
+              reg "a1" ?= val 63
+              mMACRO "\tjal readstr\n"
+              res ?= call "toWSTR" [ref $ var "cmd", ref $ var "wcmd"]
+              res ?= call "sReadNum" [ref $ var "wcmd"]
+              {- eval fib -}
+              res ?= call "fib" [res, ref $ var "fib_resW"]
+              {- print res -}
+              res ?= call "toSTR" [ref $ var "fib_resW", ref $ var "fib_resS"]
+              var "sptr" ?= ref $ var "fib_resS"
+              reg "a0" ?= var "sptr"
+              mMACRO "\tjal putsl\n"
+            )
+            (_if(call "stringCmp" [ref $ var "wcmd", ref $ var "CMD:eval"])
+              (mDO $ do
+                {- read an expr -}
+                var "sptr" ?= ref $ var "cmd" 
+                reg "a0" ?= var "sptr"
+                reg "a1" ?= val 63
+                mMACRO "\tjal readstr\n"
+                res ?= call "toWSTR" [ref $ var "cmd", ref $ var "wcmd"]
+                {- eval -}
+                res ?= call "evalExpr" [ref $ var "wcmd"]
+                res ?= call "numToStr" [ref $ var "wcmd", res]
+                res ?= call "toSTR" [ref $ var "wcmd", ref $ var "cmd"]
+                var "sptr" ?= ref $ var "cmd"
+                reg "a0" ?= var "sptr"
+                mMACRO "\tjal putsl\n"
+              )
+              (mDO $ do
+                var "sptr" ?= ref $ var "STR:invalid"
+                reg "a0" ?= var "sptr"
+                mMACRO "\tjal putsl\n"
+              )
+            )
           )
         )
       
